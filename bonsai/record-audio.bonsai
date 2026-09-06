@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WorkflowBuilder Version="2.9.1"
+                 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                 xmlns:al="clr-namespace:Bonsai.Audio;assembly=Bonsai.Audio"
+                 xmlns:rx="clr-namespace:Bonsai.Reactive;assembly=Bonsai.Core"
+                 xmlns="https://bonsai-rx.org/2018/workflow">
+  <Workflow>
+    <Nodes>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="al:AudioCapture">
+          <al:DeviceName>Microphone (250kHz AudioMoth US</al:DeviceName>
+          <al:SampleRate>250000</al:SampleRate>
+          <al:SampleFormat>Mono16</al:SampleFormat>
+          <al:BufferLength>10</al:BufferLength>
+        </Combinator>
+      </Expression>
+      <!-- 360000 blocks x 10 ms = one hour of acquired audio. No overlap. -->
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="rx:WindowCount">
+          <rx:Count>360000</rx:Count>
+          <rx:Skip xsi:nil="true" />
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="rx:SelectMany">
+        <Name>WriteWav</Name>
+        <Description>Write each hour to a new WAV while AudioCapture keeps running. FileName is the base path; Timestamp adds a unique suffix. Change FileName before a session.</Description>
+        <Workflow>
+          <Nodes>
+            <Expression xsi:type="WorkflowInput">
+              <Name>Source1</Name>
+            </Expression>
+            <Expression xsi:type="Combinator">
+              <Combinator xsi:type="al:AudioWriter">
+                <al:FileName>../recordings/audio.wav</al:FileName>
+                <al:Suffix>Timestamp</al:Suffix>
+                <al:Buffered>true</al:Buffered>
+                <al:Overwrite>false</al:Overwrite>
+                <al:SampleRate>250000</al:SampleRate>
+              </Combinator>
+            </Expression>
+            <Expression xsi:type="WorkflowOutput" />
+          </Nodes>
+          <Edges>
+            <Edge From="0" To="1" Label="Source1" />
+            <Edge From="1" To="2" Label="Source1" />
+          </Edges>
+        </Workflow>
+      </Expression>
+    </Nodes>
+    <Edges>
+      <Edge From="0" To="1" Label="Source1" />
+      <Edge From="1" To="2" Label="Source1" />
+    </Edges>
+  </Workflow>
+</WorkflowBuilder>
