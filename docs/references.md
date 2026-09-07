@@ -17,3 +17,9 @@ Reviewed 2026-09-06. These sources justify the building blocks and workflow styl
 | [GitHub Discussion #2508: realtime stimulation graph, 2026](https://github.com/orgs/bonsai-rx/discussions/2508) | A supplied workflow is revised after inspection: software pulse timing/plots differ from hardware behavior; recommend hardware pulse generation and hardware timestamps. Apply this to milestone-2 Arduino timing and DAQ validation. The thread is not marked as an accepted answer. |
 
 Prefer these maintained operators and documented patterns over an unverified third-party extension. Preserve exact tested package versions and document any deviation when implementing.
+
+## Implementation follow-up
+
+The detector uses native synchronous Scan, comparisons, arithmetic and Condition/Merge branches. Settings are exposed through property mappings. ExpressionTransform is restricted to assigning record field names; anonymous records are described by Goncalo Lopes in this [older Google Group explanation](https://groups.google.com/g/bonsai-users/c/q0TXurzXHWs/m/1IbO6317BwAJ). This keeps the decisions visible in the workflow without a custom C# extension.
+
+The [AudioReader implementation](https://github.com/bonsai-rx/bonsai/blob/main/Bonsai.Audio/AudioReader.cs) distinguishes autonomous paced reading from reading driven by an input sequence. Replay connects native Range to AudioReader for unpaced 10-ms buffers. The [FrequencyFilter](https://github.com/bonsai-rx/bonsai/blob/main/Bonsai.Dsp/FrequencyFilter.cs) and [FirFilter](https://github.com/bonsai-rx/bonsai/blob/main/Bonsai.Dsp/FirFilter.cs) sources specify the filter design. Example-specific comparisons and exploration remain in scratch storage.

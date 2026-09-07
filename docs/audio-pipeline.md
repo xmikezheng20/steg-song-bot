@@ -11,10 +11,10 @@ At 250000 samples/second and 10-ms capture buffers, each incoming item represent
 | `Divide`, value 50 | The scalar L2 norm | One scalar RMS: `sqrt(sum(x[i]^2)/2500)` | Since `sqrt(2500)=50`, this produces the block's RMS amplitude relative to full scale. It is an amplitude measure derived from mean-square energy, not calibrated sound pressure. |
 | `GreaterThan` | The RMS scalar | One Boolean per block | `true` means the block is louder than the chosen threshold; `false` means it is not. This is activity evidence, not yet a song event. |
 
-Example: if a filtered block has RMS 0.02, its L2 norm is 1.0. Dividing by 50 returns 0.02. A hypothetical threshold of 0.01 produces `true`. Those numbers illustrate the math, not a recommended detection threshold.
+Example: if a filtered block has RMS 0.02, its L2 norm is 1.0. Dividing by 50 returns 0.02. The current starting threshold of **0.01** produces `true`. The implemented filter uses KernelLength 60 (61 coefficients).
 
-The next layer integrates the Boolean stream to reject isolated activity and recognize songs. Start conservatively, but remember the estimated onset before confirmation. Track song offset separately using 200 ms of quiet audio.
+The implemented `SongState` workflow uses a native GreaterThan node for the RMS threshold. It confirms after at least 1 second of candidate span with at least 20% occupancy, remembers the candidate onset, and tracks offset separately using 200 ms of quiet audio. See the [run guide](detection.md).
 
-The raw WAV branch splits directly from `AudioCapture`, before `ConvertScale` and `FrequencyFilter`. This preserves the original PCM16 data for later analysis and lets us revise detection parameters without rerecording. The simple recorder does not yet include the detection chain described here.
+The raw WAV branch splits directly from `AudioCapture`, before `ConvertScale` and `FrequencyFilter`. This preserves the original PCM16 data for later analysis and lets us revise detection parameters without rerecording. `detect-song.bonsai` includes this switchable branch; the standalone recorder remains acquisition-only.
 
 References: [AudioCapture](https://bonsai-rx.org/docs/api/Bonsai.Audio.AudioCapture.html), [ConvertScale](https://bonsai-rx.org/docs/api/Bonsai.Dsp.ConvertScale.html), [FrequencyFilter](https://bonsai-rx.org/docs/api/Bonsai.Dsp.FrequencyFilter.html), [Norm](https://bonsai-rx.org/docs/api/Bonsai.Dsp.Norm.html).

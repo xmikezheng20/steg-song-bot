@@ -2,3 +2,4 @@
 /scratch/
 .bonsai/
 *.bonsai.layout
+__pycache__/

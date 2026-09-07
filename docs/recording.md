@@ -18,7 +18,7 @@ From the repository root in PowerShell:
 ```
 
 1. Select `AudioCapture`. The current OpenAL device selector is `Microphone (250kHz AudioMoth US` (the truncated name works on this PC). If moving computers, select the AudioMoth from the device list rather than guessing its string.
-2. Keep `SampleRate=250000`, `SampleFormat=Mono16`, and `BufferLength=10` ms. User's AudioMoth configuration: low-medium gain, 250 kHz, otherwise defaults.
+2. Keep `SampleRate=250000`, `SampleFormat=Mono16`, and `BufferLength=10` ms. Current user-reported AudioMoth configuration: medium gain, low gain mode enabled, 250 kHz, CUSTOM switch position.
 3. Double-click `WriteWav`, select `AudioWriter`, and set `FileName` to the desired session's base WAV path. Default `../recordings/audio.wav` resolves relative to the workflow directory. Prefer a new session directory on the recording disk for experiments.
 4. Start the workflow. Double-click `AudioCapture` to inspect the incoming waveform if desired. Stop normally to finish the last WAV header.
 

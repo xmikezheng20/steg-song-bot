@@ -6,7 +6,7 @@ Updated 2026-09-06. Development-PC capture is verified; rig-PC settings must be 
 
 Roles: **AudioMoth Flash App** installs USB-microphone firmware if needed; **AudioMoth USB Microphone App** configures it; **AudioMoth Live App** provides an independent capture/spectrogram check; **Bonsai** acquires the experiment stream.
 
-Manufacturer procedure: use USB/OFF for configuration. DEFAULT exposes the selected rate/gain; CUSTOM additionally applies configured filters/advanced settings. The user configured 250 kHz, low-medium gain, otherwise defaults. The current recorder applies no filtering; filtering is planned for the later detection branch. [Official instructions](https://www.openacousticdevices.info/usb-microphone).
+Manufacturer procedure: use USB/OFF for configuration. DEFAULT exposes the selected rate/gain; CUSTOM additionally applies configured filters/advanced settings. Latest user-reported rig configuration: **250 kHz, medium gain, low gain mode enabled, CUSTOM switch position**. This supersedes the original low-medium/default starting configuration. The current Bonsai recorder applies no filtering. Record any device filter settings separately; CUSTOM alone does not specify them. [Official instructions](https://www.openacousticdevices.info/usb-microphone).
 
 Record together when connecting:
 
@@ -14,8 +14,8 @@ Record together when connecting:
 | --- | --- |
 | Firmware | User reports USB-microphone firmware already configured; record actual version, do not reflash by default. |
 | Rate | User configured 250000 Hz; live Bonsai capture at that rate succeeded after cable replacement. |
-| Gain / mic placement | User configured low-medium gain. Placement still to document; keep gain fixed after calibration. |
-| Switch / device filters | User reports otherwise default settings. Physical switch position/version still to record if needed. No settings changed by the agent. |
+| Gain / mic placement | Medium gain with low gain mode enabled, user-reported. Placement still to document; keep gain and geometry fixed within a comparison recording. |
+| Switch / device filters | CUSTOM, user-reported. Device filter settings and firmware version still to record. No settings changed by the agent. |
 | Windows input | Confirm enumeration, microphone access, and available format. Record any gain/enhancement settings; disable automatic level processing if present. |
 | Bonsai device | On the development PC, Windows lists `Microphone (250kHz AudioMoth USB Microphone)`, status OK. OpenAL selector `Microphone (250kHz AudioMoth US` successfully captured audio. Reselect the device on the rig PC. |
 
@@ -25,7 +25,7 @@ Bonsai capture has now been verified directly with a short rotation test and a o
 
 Tested recorder: Bonsai 2.9.1, with Audio/Core/System 2.9.1 and their package-manager dependencies. Typical installation path is `%LOCALAPPDATA%\Bonsai`. No scripting package or custom extension is needed. The workflow in this repository is the current recording baseline.
 
-Use these versions on the rig PC where practical; record any differences in session notes. Native visualizers suffice. DSP will be added for detection; keep acquisition at the top level and expose detector settings together at that stage.
+For the detector, additionally install **Bonsai.Dsp 2.9.1** and **Bonsai.Scripting.Expressions 2.9.0** with their dependencies. Expressions only label output fields; no custom C# extension or external process is used. Native visualizers suffice. Acquisition remains at the top level and all four detector settings are exposed on the SongState node. See the [detector run guide](detection.md).
 
 ## Avisoft Player 116H — prepare for milestone 2
 
