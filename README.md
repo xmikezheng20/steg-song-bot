@@ -3,8 +3,8 @@
 Closed-loop song experiments for *Scotinomys teguina*, built as a set of small
 protocols around Bonsai.
 
-The repository is being rebuilt protocol by protocol. Recording and live song
-detection are the first two complete protocols.
+The repository is being rebuilt protocol by protocol. Recording, live song
+detection and passive playback triggering are the first protocols.
 
 ## Repository layout
 
@@ -96,7 +96,22 @@ default when `--profile` is omitted. Both profiles launch
 Exact setup, signal processing and state semantics are documented in
 `docs/song_detection.md` and `docs/rig_setup.md`.
 
+## Trigger passive playback
+
+The passive-playback protocol sends one command to the Arduino every 120
+seconds. Avisoft owns the playlist and advances it in response to the hardware
+TRG pulse; playlist paths do not belong in this repository.
+
+```powershell
+python -m steg_song check passive_playback --rig config/rig.local.toml
+python -m steg_song run passive_playback --rig config/rig.local.toml --session passive-test
+```
+
+The first trigger occurs after one complete interval. Arduino responses appear
+in the command window and are saved immediately to `playback_events.csv`.
+Firmware, wiring and test instructions are in `docs/passive_playback.md`.
+
 ## Current scope
 
-Recording and live song detection are implemented. Scheduling and playback are
-not yet implemented.
+Recording, live song detection and fixed-interval passive playback triggering
+are implemented. Song-triggered and combined playback are not yet implemented.

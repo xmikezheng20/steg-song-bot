@@ -11,5 +11,9 @@ gain = "medium"
 low_gain_mode = true
 switch_position = "CUSTOM"
 
+[arduino_trigger]
+port = "COM3"
+baud_rate = 9600
+
 [storage]
 session_root = "D:/steg-song-sessions"

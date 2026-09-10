@@ -107,12 +107,38 @@ class SongDetectionRun(ProtocolRun):
         return result
 
 
+@dataclass(frozen=True)
+class PassivePlaybackRun:
+    protocol_name: str
+    workflow: Path
+    bonsai_executable: Path
+    session_root: Path
+    serial_port: str
+    serial_baud_rate: int
+    interval_seconds: int
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "protocol": {
+                "name": self.protocol_name,
+                "workflow": str(self.workflow),
+            },
+            "bonsai": {"executable": str(self.bonsai_executable)},
+            "arduino_trigger": {
+                "port": self.serial_port,
+                "baud_rate": self.serial_baud_rate,
+            },
+            "playback": {"interval_seconds": self.interval_seconds},
+            "storage": {"session_root": str(self.session_root)},
+        }
+
+
 def load_run(
     repo_root: Path,
     rig_path: Path,
     protocol_name: str,
     profile_name: str | None = None,
-) -> ProtocolRun:
+) -> ProtocolRun | PassivePlaybackRun:
     if protocol_name == "recording":
         if profile_name is not None:
             raise ConfigError("recording does not use a profile")
@@ -121,7 +147,34 @@ def load_run(
         return load_song_detection_run(
             repo_root, rig_path, profile_name or "standard"
         )
+    if protocol_name == "passive_playback":
+        if profile_name is not None:
+            raise ConfigError("passive_playback does not use a profile")
+        return load_passive_playback_run(repo_root, rig_path)
     raise ConfigError(f"Unknown protocol: {protocol_name!r}")
+
+
+def load_passive_playback_run(
+    repo_root: Path, rig_path: Path
+) -> PassivePlaybackRun:
+    protocol = _read_protocol(repo_root, "passive_playback")
+    rig = _read_toml(rig_path)
+    base = _load_base_settings(
+        repo_root, rig, "passive_playback", protocol
+    )
+    serial_port = _required(rig, "arduino_trigger", "port", str).strip()
+    if not serial_port:
+        raise ConfigError("arduino_trigger.port cannot be empty")
+    return PassivePlaybackRun(
+        **base,
+        serial_port=serial_port,
+        serial_baud_rate=_positive_int(
+            rig, "arduino_trigger", "baud_rate"
+        ),
+        interval_seconds=_positive_int(
+            protocol, "playback", "interval_seconds"
+        ),
+    )
 
 
 def load_recording_run(
@@ -226,15 +279,7 @@ def _load_common_settings(
     protocol: dict[str, Any],
 ) -> ProtocolRun:
     rig = _read_toml(rig_path)
-    name = _required(protocol, "protocol", "name", str)
-    if name != protocol_name:
-        raise ConfigError(
-            f"Protocol file {protocol_name!r} declares the name {name!r}"
-        )
-
-    workflow = repo_root / _required(protocol, "protocol", "workflow", str)
-    bonsai = Path(_required(rig, "bonsai", "executable", str)).expanduser()
-    session_root = Path(_required(rig, "storage", "session_root", str)).expanduser()
+    base = _load_base_settings(repo_root, rig, protocol_name, protocol)
     sample_rate = _positive_int(rig, "audio_input", "sample_rate_hz")
     sample_format = _required(rig, "audio_input", "sample_format", str)
     audiomoth_gain = _required(rig, "audio_input", "gain", str)
@@ -258,15 +303,9 @@ def _load_common_settings(
         )
     if sample_format not in {"Mono8", "Mono16", "Stereo8", "Stereo16"}:
         raise ConfigError(f"Unsupported AudioCapture sample format: {sample_format!r}")
-    if not workflow.is_file():
-        raise ConfigError(f"Workflow does not exist: {workflow}")
-    if not bonsai.is_file():
-        raise ConfigError(f"Bonsai executable does not exist: {bonsai}")
 
     return ProtocolRun(
-        protocol_name=name,
-        workflow=workflow.resolve(),
-        bonsai_executable=bonsai.resolve(),
+        **base,
         audio_device=device,
         sample_rate_hz=sample_rate,
         sample_format=sample_format,
@@ -274,9 +313,35 @@ def _load_common_settings(
         low_gain_mode=low_gain_mode,
         switch_position=switch_position,
         buffer_ms=buffer_ms,
-        session_root=session_root.resolve(),
         samples_per_block=samples_per_block,
     )
+
+
+def _load_base_settings(
+    repo_root: Path,
+    rig: dict[str, Any],
+    protocol_name: str,
+    protocol: dict[str, Any],
+) -> dict[str, Any]:
+    name = _required(protocol, "protocol", "name", str)
+    if name != protocol_name:
+        raise ConfigError(
+            f"Protocol file {protocol_name!r} declares the name {name!r}"
+        )
+
+    workflow = repo_root / _required(protocol, "protocol", "workflow", str)
+    bonsai = Path(_required(rig, "bonsai", "executable", str)).expanduser()
+    session_root = Path(_required(rig, "storage", "session_root", str)).expanduser()
+    if not workflow.is_file():
+        raise ConfigError(f"Workflow does not exist: {workflow}")
+    if not bonsai.is_file():
+        raise ConfigError(f"Bonsai executable does not exist: {bonsai}")
+    return {
+        "protocol_name": name,
+        "workflow": workflow.resolve(),
+        "bonsai_executable": bonsai.resolve(),
+        "session_root": session_root.resolve(),
+    }
 
 
 def _recording_settings(

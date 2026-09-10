@@ -7,10 +7,11 @@ import json
 from pathlib import Path
 import subprocess
 import threading
-from typing import Sequence
+from typing import Sequence, TextIO
 
 from .config import (
     ConfigError,
+    PassivePlaybackRun,
     ProtocolRun,
     RecordingRun,
     SongDetectionRun,
@@ -58,7 +59,7 @@ def _parser() -> argparse.ArgumentParser:
 def _common_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "protocol",
-        choices=("recording", "song_detection"),
+        choices=("recording", "song_detection", "passive_playback"),
     )
     parser.add_argument(
         "--profile",
@@ -68,7 +69,11 @@ def _common_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--rig", type=Path, required=True, help="path to rig TOML")
 
 
-def _run_bonsai(run: ProtocolRun, session_id: str, headless: bool) -> int:
+def _run_bonsai(
+    run: ProtocolRun | PassivePlaybackRun,
+    session_id: str,
+    headless: bool,
+) -> int:
     session_dir = run.session_root / session_id
     if session_dir.exists():
         raise ConfigError(f"Session directory already exists: {session_dir}")
@@ -89,6 +94,7 @@ def _run_bonsai(run: ProtocolRun, session_id: str, headless: bool) -> int:
 
     monitor_stop: threading.Event | None = None
     monitor_thread: threading.Thread | None = None
+    playback_event_path: Path | None = None
     if isinstance(run, SongDetectionRun):
         event_path = session_dir / "events.csv"
         print(f"Live song events will appear here. Full log: {event_path.resolve()}")
@@ -99,12 +105,21 @@ def _run_bonsai(run: ProtocolRun, session_id: str, headless: bool) -> int:
             daemon=True,
         )
         monitor_thread.start()
+    elif isinstance(run, PassivePlaybackRun):
+        playback_event_path = session_dir / "playback_events.csv"
+        print(
+            "Live Arduino responses will appear below. "
+            f"Full log: {playback_event_path.resolve()}"
+        )
 
     try:
-        completed = subprocess.run(command, cwd=REPO_ROOT, check=False)
-        manifest["exit_code"] = completed.returncode
-        manifest["status"] = "completed" if completed.returncode == 0 else "failed"
-        return completed.returncode
+        exit_code = _run_process(command, playback_event_path)
+        manifest["exit_code"] = exit_code
+        if exit_code == 130:
+            manifest["status"] = "interrupted"
+        else:
+            manifest["status"] = "completed" if exit_code == 0 else "failed"
+        return exit_code
     except BaseException:
         manifest["status"] = "interrupted"
         raise
@@ -117,15 +132,25 @@ def _run_bonsai(run: ProtocolRun, session_id: str, headless: bool) -> int:
         _write_json(manifest_path, manifest)
 
 
-def _bonsai_command(run: ProtocolRun, session_dir: Path, headless: bool) -> list[str]:
+def _bonsai_command(
+    run: ProtocolRun | PassivePlaybackRun,
+    session_dir: Path,
+    headless: bool,
+) -> list[str]:
     command = [str(run.bonsai_executable), str(run.workflow)]
     command.append("--no-editor" if headless else "--start")
-    properties = {
-        "AudioDevice": run.audio_device,
-        "AudioSampleRate": run.sample_rate_hz,
-        "AudioSampleFormat": run.sample_format,
-        "AudioBufferMs": run.buffer_ms,
-    }
+    if headless:
+        command.append("--no-boot")
+    properties: dict[str, object] = {}
+    if isinstance(run, ProtocolRun):
+        properties.update(
+            {
+                "AudioDevice": run.audio_device,
+                "AudioSampleRate": run.sample_rate_hz,
+                "AudioSampleFormat": run.sample_format,
+                "AudioBufferMs": run.buffer_ms,
+            }
+        )
     if isinstance(run, (RecordingRun, SongDetectionRun)):
         properties.update(
             {
@@ -151,9 +176,78 @@ def _bonsai_command(run: ProtocolRun, session_dir: Path, headless: bool) -> list
                 "EventLogFile": str((session_dir / "events.csv").resolve()),
             }
         )
+    if isinstance(run, PassivePlaybackRun):
+        properties.update(
+            {
+                "ArduinoPort": run.serial_port,
+                "ArduinoBaudRate": run.serial_baud_rate,
+                "PlaybackInterval": _format_bonsai_timespan(
+                    run.interval_seconds
+                ),
+            }
+        )
     for name, value in properties.items():
         command.extend(("-p", f"{name}={value}"))
     return command
+
+
+def _run_process(
+    command: list[str], playback_event_path: Path | None
+) -> int:
+    process: subprocess.Popen[str] | None = None
+    event_file: TextIO | None = None
+    event_writer = None
+    workflow_error = False
+    try:
+        if playback_event_path is not None:
+            event_file = playback_event_path.open(
+                "w", newline="", encoding="utf-8"
+            )
+            event_writer = csv.writer(event_file)
+            event_writer.writerow(("ProcessedUtc", "Event"))
+            event_file.flush()
+
+        process = subprocess.Popen(
+            command,
+            cwd=Path(command[1]).parent,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+        assert process.stdout is not None
+        for line in process.stdout:
+            print(line, end="", flush=True)
+            message = line.rstrip("\r\n")
+            if message.startswith("[playback] ") and event_writer is not None:
+                event_writer.writerow((_utc_now(), message.removeprefix("[playback] ")))
+                event_file.flush()
+            if "Runtime exception stack trace" in message:
+                workflow_error = True
+        exit_code = process.wait()
+        return 1 if workflow_error and exit_code == 0 else exit_code
+    except KeyboardInterrupt:
+        _stop_process(process)
+        return 130
+    except BaseException:
+        _stop_process(process)
+        raise
+    finally:
+        if process is not None and process.stdout is not None:
+            process.stdout.close()
+        if event_file is not None:
+            event_file.close()
+
+
+def _stop_process(process: subprocess.Popen[str] | None) -> None:
+    if process is None or process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
 
 
 def _write_json(path: Path, value: object) -> None:
@@ -248,6 +342,14 @@ def _format_elapsed(seconds: float) -> str:
     if hours:
         return f"{hours:02d}:{minutes:02d}:{remainder:05.2f}"
     return f"{minutes:02d}:{remainder:05.2f}"
+
+
+def _format_bonsai_timespan(seconds: int) -> str:
+    days, remainder = divmod(seconds, 24 * 60 * 60)
+    hours, remainder = divmod(remainder, 60 * 60)
+    minutes, seconds = divmod(remainder, 60)
+    clock = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+    return f"{days}.{clock}" if days else clock
 
 
 def _utc_now() -> str:

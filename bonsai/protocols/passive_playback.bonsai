@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WorkflowBuilder Version="2.9.1"
+                 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                 xmlns:io="clr-namespace:Bonsai.IO;assembly=Bonsai.System"
+                 xmlns:rx="clr-namespace:Bonsai.Reactive;assembly=Bonsai.Core"
+                 xmlns:s="clr-namespace:Bonsai.Scripting.Expressions;assembly=Bonsai.Scripting.Expressions"
+                 xmlns="https://bonsai-rx.org/2018/workflow">
+  <Workflow>
+    <Nodes>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="Period" DisplayName="PlaybackInterval" Description="Time between passive playback triggers." />
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="rx:Timer">
+          <rx:DueTime>PT0S</rx:DueTime>
+          <rx:Period>PT2M</rx:Period>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="rx:Skip">
+          <rx:Count>1</rx:Count>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="PortName" DisplayName="ArduinoPort" Description="Arduino serial port from the rig configuration." />
+      </Expression>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="BaudRate" DisplayName="ArduinoBaudRate" Description="Arduino serial baud rate from the rig configuration." />
+      </Expression>
+      <Expression xsi:type="IncludeWorkflow" Path="../components/arduino_trigger.bonsai" />
+      <Expression xsi:type="s:ExpressionTransform">
+        <Name>LiveMessage</Name>
+        <s:Expression>&quot;[playback] &quot; + it</s:Expression>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="io:WriteLine" />
+      </Expression>
+      <Expression xsi:type="WorkflowOutput" />
+    </Nodes>
+    <Edges>
+      <Edge From="0" To="1" Label="Source1" />
+      <Edge From="1" To="2" Label="Source1" />
+      <Edge From="2" To="5" Label="Source1" />
+      <Edge From="3" To="5" Label="Source1" />
+      <Edge From="4" To="5" Label="Source1" />
+      <Edge From="5" To="6" Label="Source1" />
+      <Edge From="6" To="7" Label="Source1" />
+      <Edge From="7" To="8" Label="Source1" />
+    </Edges>
+  </Workflow>
+</WorkflowBuilder>

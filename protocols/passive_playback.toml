@@ -1,0 +1,6 @@
+[protocol]
+name = "passive_playback"
+workflow = "bonsai/protocols/passive_playback.bonsai"
+
+[playback]
+interval_seconds = 120

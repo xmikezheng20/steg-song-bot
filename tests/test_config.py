@@ -1,11 +1,15 @@
+import csv
 from pathlib import Path
+import sys
 import tempfile
 import unittest
 import xml.etree.ElementTree as ElementTree
 
 from steg_song.config import (
     ConfigError,
+    PassivePlaybackRun,
     SongDetectionRun,
+    load_passive_playback_run,
     load_recording_run,
     load_run,
     load_song_detection_run,
@@ -15,6 +19,7 @@ from steg_song.cli import (
     _bonsai_command,
     _format_live_event,
     _remove_disabled_outputs,
+    _run_process,
 )
 
 
@@ -24,6 +29,61 @@ XSI_TYPE = "{http://www.w3.org/2001/XMLSchema-instance}type"
 
 
 class RecordingConfigTests(unittest.TestCase):
+    def test_passive_playback_uses_only_trigger_hardware(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            bonsai = root / "Bonsai.exe"
+            bonsai.touch()
+            rig = root / "rig.toml"
+            rig.write_text(
+                f'''[bonsai]
+executable = "{bonsai.as_posix()}"
+[arduino_trigger]
+port = "COM3"
+baud_rate = 9600
+[storage]
+session_root = "{(root / 'sessions').as_posix()}"
+''',
+                encoding="utf-8",
+            )
+
+            run = load_passive_playback_run(REPO_ROOT, rig)
+
+            self.assertIsInstance(run, PassivePlaybackRun)
+            self.assertEqual(run.serial_port, "COM3")
+            self.assertEqual(run.serial_baud_rate, 9600)
+            self.assertEqual(run.interval_seconds, 120)
+
+            command = " ".join(
+                _bonsai_command(run, root / "run", headless=True)
+            )
+            self.assertIn("ArduinoPort=COM3", command)
+            self.assertIn("ArduinoBaudRate=9600", command)
+            self.assertIn("PlaybackInterval=00:02:00", command)
+            self.assertIn("--no-boot", command)
+            self.assertNotIn("AudioDevice=", command)
+
+    def test_passive_playback_output_is_flushed_to_csv(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            script = root / "emit_event.py"
+            script.write_text(
+                'print("[playback] START", flush=True)\n'
+                'print("[playback] DONE", flush=True)\n',
+                encoding="utf-8",
+            )
+            event_log = root / "playback_events.csv"
+
+            exit_code = _run_process(
+                [sys.executable, str(script)], event_log
+            )
+
+            self.assertEqual(exit_code, 0)
+            with event_log.open(newline="", encoding="utf-8") as handle:
+                rows = list(csv.DictReader(handle))
+            self.assertEqual([row["Event"] for row in rows], ["START", "DONE"])
+            self.assertTrue(all(row["ProcessedUtc"] for row in rows))
+
     def test_recording_protocol_derives_block_geometry(self) -> None:
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
