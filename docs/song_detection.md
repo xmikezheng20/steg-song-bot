@@ -49,6 +49,18 @@ is the half-open end of the last active block, not the later decision block.
 Every run creates `events.csv` and `run.json`. The debug profile also creates
 timestamped `audio*.wav` files and `blocks.csv`.
 
+The launcher watches `events.csv` and prints concise live messages in the
+command window for confirmed, completed and rejected events. For example:
+
+```text
+[song 1] CONFIRMED  onset=00:34.06  confirmed=00:35.56  occupancy=50.7%
+[song 1] COMPLETED  onset=00:34.06  offset=00:39.74  span=5.68s  occupancy=55.5%
+```
+
+This monitor is always active for song detection and is identical in the
+standard and debug profiles. The CSV remains authoritative; the terminal text
+is only a convenient live view.
+
 `ProcessedUtc` is a software processing timestamp. Use block positions—not that
 timestamp—for acoustic timing.
 

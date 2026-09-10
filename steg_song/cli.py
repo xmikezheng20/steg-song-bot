@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import csv
 from datetime import datetime, timezone
 import json
 from pathlib import Path
 import subprocess
+import threading
 from typing import Sequence
 
 from .config import (
@@ -85,6 +87,19 @@ def _run_bonsai(run: ProtocolRun, session_id: str, headless: bool) -> int:
     }
     _write_json(manifest_path, manifest)
 
+    monitor_stop: threading.Event | None = None
+    monitor_thread: threading.Thread | None = None
+    if isinstance(run, SongDetectionRun):
+        event_path = session_dir / "events.csv"
+        print(f"Live song events will appear here. Full log: {event_path.resolve()}")
+        monitor_stop = threading.Event()
+        monitor_thread = threading.Thread(
+            target=_monitor_events,
+            args=(event_path, run.buffer_ms / 1000, monitor_stop),
+            daemon=True,
+        )
+        monitor_thread.start()
+
     try:
         completed = subprocess.run(command, cwd=REPO_ROOT, check=False)
         manifest["exit_code"] = completed.returncode
@@ -94,6 +109,9 @@ def _run_bonsai(run: ProtocolRun, session_id: str, headless: bool) -> int:
         manifest["status"] = "interrupted"
         raise
     finally:
+        if monitor_stop is not None and monitor_thread is not None:
+            monitor_stop.set()
+            monitor_thread.join(timeout=2)
         _remove_disabled_outputs(run, session_dir)
         manifest["finished_utc"] = _utc_now()
         _write_json(manifest_path, manifest)
@@ -150,6 +168,86 @@ def _remove_disabled_outputs(run: ProtocolRun, session_dir: Path) -> None:
     if not run.save_raw_audio:
         for path in session_dir.glob("audio*.wav"):
             path.unlink()
+
+
+def _monitor_events(
+    path: Path,
+    block_seconds: float,
+    stop: threading.Event,
+) -> None:
+    seen: set[tuple[str, str, str]] = set()
+    while not stop.is_set():
+        _print_new_events(path, block_seconds, seen)
+        stop.wait(0.25)
+    _print_new_events(path, block_seconds, seen)
+
+
+def _print_new_events(
+    path: Path,
+    block_seconds: float,
+    seen: set[tuple[str, str, str]],
+) -> None:
+    try:
+        with path.open(newline="", encoding="utf-8") as handle:
+            rows = list(csv.DictReader(handle))
+    except (OSError, UnicodeDecodeError, csv.Error):
+        return
+
+    for row in rows:
+        key = (
+            row.get("Event", ""),
+            row.get("CandidateId", ""),
+            row.get("BlockIndex", ""),
+        )
+        if not key[0] or not key[2] or key in seen:
+            continue
+        try:
+            message = _format_live_event(row, block_seconds)
+        except (KeyError, TypeError, ValueError):
+            continue
+        seen.add(key)
+        print(message, flush=True)
+
+
+def _format_live_event(row: dict[str, str], block_seconds: float) -> str:
+    event = row["Event"].lower()
+    decision = (int(row["BlockIndex"]) + 1) * block_seconds
+    if event not in {"confirmed", "completed", "rejected"}:
+        return f"[event] {event.upper()}  time={_format_elapsed(decision)}"
+
+    candidate = int(row["CandidateId"])
+    onset = int(row["OnsetBlock"]) * block_seconds
+    occupancy = float(row["Occupancy"])
+
+    if event == "confirmed":
+        return (
+            f"[song {candidate}] CONFIRMED  onset={_format_elapsed(onset)}  "
+            f"confirmed={_format_elapsed(decision)}  occupancy={occupancy:.1%}"
+        )
+
+    offset = int(row["OffsetBlock"]) * block_seconds
+    span = offset - onset
+    if event == "completed":
+        return (
+            f"[song {candidate}] COMPLETED  onset={_format_elapsed(onset)}  "
+            f"offset={_format_elapsed(offset)}  span={span:.2f}s  "
+            f"occupancy={occupancy:.1%}"
+        )
+    if event == "rejected":
+        return (
+            f"[candidate {candidate}] REJECTED  onset={_format_elapsed(onset)}  "
+            f"offset={_format_elapsed(offset)}  span={span:.2f}s  "
+            f"occupancy={occupancy:.1%}"
+        )
+    raise ValueError(f"Unsupported detector event: {event}")
+
+
+def _format_elapsed(seconds: float) -> str:
+    minutes, remainder = divmod(seconds, 60)
+    hours, minutes = divmod(int(minutes), 60)
+    if hours:
+        return f"{hours:02d}:{minutes:02d}:{remainder:05.2f}"
+    return f"{minutes:02d}:{remainder:05.2f}"
 
 
 def _utc_now() -> str:

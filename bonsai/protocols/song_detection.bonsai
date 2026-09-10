@@ -231,6 +231,7 @@
             <Expression xsi:type="io:CsvWriter">
               <io:FileName>events.csv</io:FileName>
               <io:Append>false</io:Append>
+              <io:Buffered>false</io:Buffered>
               <io:Overwrite>false</io:Overwrite>
               <io:IncludeHeader>true</io:IncludeHeader>
             </Expression>

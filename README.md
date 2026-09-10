@@ -82,6 +82,12 @@ python -m steg_song check song_detection --profile debug --rig config/rig.local.
 python -m steg_song run song_detection --profile debug --rig config/rig.local.toml --session mouse-001-detection
 ```
 
+While Bonsai runs, the same command window prints each confirmed song,
+completed song and rejected candidate. It includes the event time, acoustic
+onset or offset, span and occupancy. `events.csv` remains the complete
+machine-readable record and is written without buffering so it can also be
+read during the experiment.
+
 Once the parameters are settled, use `--profile standard`. Standard is also the
 default when `--profile` is omitted. Both profiles launch
 `bonsai/protocols/song_detection.bonsai`; `save_raw_audio` and

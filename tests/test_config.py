@@ -11,7 +11,11 @@ from steg_song.config import (
     load_song_detection_run,
     validate_session_id,
 )
-from steg_song.cli import _bonsai_command, _remove_disabled_outputs
+from steg_song.cli import (
+    _bonsai_command,
+    _format_live_event,
+    _remove_disabled_outputs,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -51,6 +55,35 @@ session_root = "{(root / 'sessions').as_posix()}"
     def test_session_id_rejects_paths(self) -> None:
         with self.assertRaises(ConfigError):
             validate_session_id("../existing")
+
+    def test_live_event_messages_are_concise(self) -> None:
+        confirmed = {
+            "BlockIndex": "3555",
+            "CandidateId": "1",
+            "OnsetBlock": "3406",
+            "OffsetBlock": "3556",
+            "Occupancy": "0.5066666667",
+            "Event": "confirmed",
+        }
+        completed = {
+            "BlockIndex": "3998",
+            "CandidateId": "1",
+            "OnsetBlock": "3406",
+            "OffsetBlock": "3974",
+            "Occupancy": "0.5545774648",
+            "Event": "completed",
+        }
+
+        self.assertEqual(
+            _format_live_event(confirmed, 0.01),
+            "[song 1] CONFIRMED  onset=00:34.06  confirmed=00:35.56  "
+            "occupancy=50.7%",
+        )
+        self.assertEqual(
+            _format_live_event(completed, 0.01),
+            "[song 1] COMPLETED  onset=00:34.06  offset=00:39.74  "
+            "span=5.68s  occupancy=55.5%",
+        )
 
     def test_song_detection_profiles_derive_the_same_detector_settings(self) -> None:
         with tempfile.TemporaryDirectory() as folder:
