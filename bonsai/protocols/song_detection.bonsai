@@ -1,0 +1,286 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WorkflowBuilder Version="2.9.1"
+                 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                 xmlns:al="clr-namespace:Bonsai.Audio;assembly=Bonsai.Audio"
+                 xmlns:io="clr-namespace:Bonsai.IO;assembly=Bonsai.System"
+                 xmlns:rx="clr-namespace:Bonsai.Reactive;assembly=Bonsai.Core"
+                 xmlns:s="clr-namespace:Bonsai.Scripting.Expressions;assembly=Bonsai.Scripting.Expressions"
+                 xmlns="https://bonsai-rx.org/2018/workflow">
+  <Workflow>
+    <Nodes>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="DeviceName" DisplayName="AudioDevice" Description="Audio input device." />
+      </Expression>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="SampleRate" DisplayName="AudioSampleRate" Description="Audio sample rate in Hz." />
+      </Expression>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="SampleFormat" DisplayName="AudioSampleFormat" Description="Audio channel and sample format." />
+      </Expression>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="BufferLength" DisplayName="AudioBufferMs" Description="Capture buffer duration in milliseconds." />
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="al:AudioCapture">
+          <al:DeviceName>Microphone (250kHz AudioMoth US</al:DeviceName>
+          <al:SampleRate>250000</al:SampleRate>
+          <al:SampleFormat>Mono16</al:SampleFormat>
+          <al:BufferLength>10</al:BufferLength>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="Enabled" DisplayName="SaveRawAudio" Description="Write raw WAV files for debugging." />
+      </Expression>
+      <Expression xsi:type="Condition">
+        <Name>SaveRawAudio</Name>
+        <Description>Pass audio to the WAV branch only when debug recording is enabled.</Description>
+        <Workflow>
+          <Nodes>
+            <Expression xsi:type="WorkflowInput">
+              <Name>Source1</Name>
+            </Expression>
+            <Expression xsi:type="ExternalizedMapping">
+              <Property Name="Value" DisplayName="Enabled" />
+            </Expression>
+            <Expression xsi:type="Combinator">
+              <Combinator xsi:type="BooleanProperty">
+                <Value>true</Value>
+              </Combinator>
+            </Expression>
+            <Expression xsi:type="WorkflowOutput" />
+          </Nodes>
+          <Edges>
+            <Edge From="0" To="2" Label="Source1" />
+            <Edge From="1" To="2" Label="Source1" />
+            <Edge From="2" To="3" Label="Source1" />
+          </Edges>
+        </Workflow>
+      </Expression>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="Count" DisplayName="WavFileBlocks" Description="Capture blocks per WAV file." />
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="rx:WindowCount">
+          <rx:Count>360000</rx:Count>
+          <rx:Skip xsi:nil="true" />
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="OutputFile" DisplayName="WavOutputFile" Description="Base path for timestamped WAV files." />
+      </Expression>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="SampleRate" DisplayName="WavSampleRate" Description="Sample rate written to WAV headers." />
+      </Expression>
+      <Expression xsi:type="rx:SelectMany">
+        <Name>RecordAudio</Name>
+        <Description>Write each counted window to a WAV file.</Description>
+        <Workflow>
+          <Nodes>
+            <Expression xsi:type="WorkflowInput">
+              <Name>Source1</Name>
+            </Expression>
+            <Expression xsi:type="ExternalizedMapping">
+              <Property Name="FileName" DisplayName="OutputFile" Description="Base WAV output path." />
+            </Expression>
+            <Expression xsi:type="ExternalizedMapping">
+              <Property Name="SampleRate" DisplayName="SampleRate" Description="WAV header sample rate." />
+            </Expression>
+            <Expression xsi:type="Combinator">
+              <Combinator xsi:type="al:AudioWriter">
+                <al:FileName>audio.wav</al:FileName>
+                <al:Suffix>Timestamp</al:Suffix>
+                <al:Buffered>true</al:Buffered>
+                <al:Overwrite>false</al:Overwrite>
+                <al:SampleRate>250000</al:SampleRate>
+              </Combinator>
+            </Expression>
+            <Expression xsi:type="WorkflowOutput" />
+          </Nodes>
+          <Edges>
+            <Edge From="0" To="3" Label="Source1" />
+            <Edge From="1" To="3" Label="Source1" />
+            <Edge From="2" To="3" Label="Source1" />
+            <Edge From="3" To="4" Label="Source1" />
+          </Edges>
+        </Workflow>
+      </Expression>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="FilterSampleRate" DisplayName="FilterSampleRate" Description="Filter sample rate in Hz." />
+      </Expression>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="HighPassCutoffHz" DisplayName="HighPassCutoffHz" Description="High-pass cutoff in Hz." />
+      </Expression>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="HighPassKernelLength" DisplayName="HighPassKernelLength" Description="High-pass filter kernel length." />
+      </Expression>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="RmsDivisor" DisplayName="RmsDivisor" Description="Square root of samples per capture block." />
+      </Expression>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="RmsThreshold" DisplayName="RmsThreshold" Description="Strict full-scale RMS activity threshold." />
+      </Expression>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="MinimumSpanBlocks" DisplayName="MinimumSpanBlocks" Description="Minimum active-to-active span in blocks." />
+      </Expression>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="MinimumOccupancy" DisplayName="MinimumOccupancy" Description="Minimum active-block fraction." />
+      </Expression>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="EndSilenceBlocks" DisplayName="EndSilenceBlocks" Description="Consecutive quiet blocks ending a candidate." />
+      </Expression>
+      <Expression xsi:type="IncludeWorkflow" Path="../components/song_detector.bonsai" />
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="SaveBlocks" DisplayName="SaveBlockCsv" Description="Write one detector row per audio block for debugging." />
+      </Expression>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="BlockFile" DisplayName="BlockLogFile" Description="Per-block detector log." />
+      </Expression>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="EventFile" DisplayName="EventLogFile" Description="Detector transition log." />
+      </Expression>
+      <Expression xsi:type="GroupWorkflow">
+        <Name>LogDetection</Name>
+        <Description>Optionally write every detector block and always write detected events.</Description>
+        <Workflow>
+          <Nodes>
+            <Expression xsi:type="WorkflowInput">
+              <Name>Source1</Name>
+            </Expression>
+            <Expression xsi:type="Combinator">
+              <Combinator xsi:type="rx:Timestamp" />
+            </Expression>
+            <Expression xsi:type="s:ExpressionTransform">
+              <s:Name>LogFields</s:Name>
+              <s:Expression>new(
+  Value.BlockIndex as BlockIndex,
+  Value.Rms as Rms,
+  Value.Active as Active,
+  (Value.Event == &quot;completed&quot; || Value.Event == &quot;rejected&quot; ? &quot;Idle&quot; : (Value.Confirmed ? &quot;Song&quot; : (Value.OnsetBlock &gt;= 0 ? &quot;Candidate&quot; : &quot;Idle&quot;))) as State,
+  Value.CandidateId as CandidateId,
+  Value.OnsetBlock as OnsetBlock,
+  Value.LastActiveEndBlock as OffsetBlock,
+  Value.ActiveBlocks as ActiveBlocks,
+  (Value.OnsetBlock &gt;= 0 ? Value.LastActiveEndBlock - Value.OnsetBlock : Int64(0)) as SpanBlocks,
+  (Value.OnsetBlock &gt;= 0 ? Value.ActiveBlocks * 1.0 / (Value.LastActiveEndBlock - Value.OnsetBlock) : 0.0) as Occupancy,
+  Value.Event as Event,
+  Timestamp.UtcDateTime as ProcessedUtc)</s:Expression>
+            </Expression>
+            <Expression xsi:type="ExternalizedMapping">
+              <Property Name="Enabled" DisplayName="SaveBlocks" Description="Write the per-block debug log." />
+            </Expression>
+            <Expression xsi:type="Condition">
+              <Name>SaveBlocks</Name>
+              <Workflow>
+                <Nodes>
+                  <Expression xsi:type="WorkflowInput">
+                    <Name>Source1</Name>
+                  </Expression>
+                  <Expression xsi:type="ExternalizedMapping">
+                    <Property Name="Value" DisplayName="Enabled" />
+                  </Expression>
+                  <Expression xsi:type="Combinator">
+                    <Combinator xsi:type="BooleanProperty">
+                      <Value>true</Value>
+                    </Combinator>
+                  </Expression>
+                  <Expression xsi:type="WorkflowOutput" />
+                </Nodes>
+                <Edges>
+                  <Edge From="0" To="2" Label="Source1" />
+                  <Edge From="1" To="2" Label="Source1" />
+                  <Edge From="2" To="3" Label="Source1" />
+                </Edges>
+              </Workflow>
+            </Expression>
+            <Expression xsi:type="ExternalizedMapping">
+              <Property Name="FileName" DisplayName="BlockFile" Description="Per-block detector log." />
+            </Expression>
+            <Expression xsi:type="io:CsvWriter">
+              <io:FileName>blocks.csv</io:FileName>
+              <io:Append>false</io:Append>
+              <io:Overwrite>false</io:Overwrite>
+              <io:IncludeHeader>true</io:IncludeHeader>
+            </Expression>
+            <Expression xsi:type="Condition">
+              <Name>EventsOnly</Name>
+              <Workflow>
+                <Nodes>
+                  <Expression xsi:type="WorkflowInput">
+                    <Name>Source1</Name>
+                  </Expression>
+                  <Expression xsi:type="MemberSelector">
+                    <Selector>Event</Selector>
+                  </Expression>
+                  <Expression xsi:type="NotEqual">
+                    <Operand xsi:type="StringProperty">
+                      <Value />
+                    </Operand>
+                  </Expression>
+                  <Expression xsi:type="WorkflowOutput" />
+                </Nodes>
+                <Edges>
+                  <Edge From="0" To="1" Label="Source1" />
+                  <Edge From="1" To="2" Label="Source1" />
+                  <Edge From="2" To="3" Label="Source1" />
+                </Edges>
+              </Workflow>
+            </Expression>
+            <Expression xsi:type="ExternalizedMapping">
+              <Property Name="FileName" DisplayName="EventFile" Description="Detector transition log." />
+            </Expression>
+            <Expression xsi:type="io:CsvWriter">
+              <io:FileName>events.csv</io:FileName>
+              <io:Append>false</io:Append>
+              <io:Overwrite>false</io:Overwrite>
+              <io:IncludeHeader>true</io:IncludeHeader>
+            </Expression>
+            <Expression xsi:type="Combinator">
+              <Combinator xsi:type="rx:Merge" />
+            </Expression>
+            <Expression xsi:type="WorkflowOutput" />
+          </Nodes>
+          <Edges>
+            <Edge From="0" To="1" Label="Source1" />
+            <Edge From="1" To="2" Label="Source1" />
+            <Edge From="2" To="4" Label="Source1" />
+            <Edge From="3" To="4" Label="Source1" />
+            <Edge From="4" To="6" Label="Source1" />
+            <Edge From="5" To="6" Label="Source1" />
+            <Edge From="2" To="7" Label="Source1" />
+            <Edge From="7" To="9" Label="Source1" />
+            <Edge From="8" To="9" Label="Source1" />
+            <Edge From="6" To="10" Label="Source1" />
+            <Edge From="9" To="10" Label="Source2" />
+            <Edge From="10" To="11" Label="Source1" />
+          </Edges>
+        </Workflow>
+      </Expression>
+    </Nodes>
+    <Edges>
+      <Edge From="0" To="4" Label="Source1" />
+      <Edge From="1" To="4" Label="Source1" />
+      <Edge From="2" To="4" Label="Source1" />
+      <Edge From="3" To="4" Label="Source1" />
+      <Edge From="4" To="6" Label="Source1" />
+      <Edge From="5" To="6" Label="Source1" />
+      <Edge From="6" To="8" Label="Source1" />
+      <Edge From="7" To="8" Label="Source1" />
+      <Edge From="8" To="11" Label="Source1" />
+      <Edge From="9" To="11" Label="Source1" />
+      <Edge From="10" To="11" Label="Source1" />
+      <Edge From="4" To="20" Label="Source1" />
+      <Edge From="12" To="20" Label="Source1" />
+      <Edge From="13" To="20" Label="Source1" />
+      <Edge From="14" To="20" Label="Source1" />
+      <Edge From="15" To="20" Label="Source1" />
+      <Edge From="16" To="20" Label="Source1" />
+      <Edge From="17" To="20" Label="Source1" />
+      <Edge From="18" To="20" Label="Source1" />
+      <Edge From="19" To="20" Label="Source1" />
+      <Edge From="20" To="24" Label="Source1" />
+      <Edge From="21" To="24" Label="Source1" />
+      <Edge From="22" To="24" Label="Source1" />
+      <Edge From="23" To="24" Label="Source1" />
+    </Edges>
+  </Workflow>
+</WorkflowBuilder>

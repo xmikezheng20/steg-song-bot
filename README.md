@@ -1,39 +1,96 @@
 # steg-song-bot
 
-Closed-loop song playback for *Scotinomys teguina*, starting with an AudioMoth USB microphone, Windows/Bonsai, Arduino, and Avisoft UltraSoundGate Player 116H.
+Closed-loop song experiments for *Scotinomys teguina*, built as a set of small
+protocols around Bonsai.
 
-## Agreed behavior
+The repository is being rebuilt protocol by protocol. Recording and live song
+detection are the first two complete protocols.
 
-- Listen continuously, including during playback. Use the subject/playback amplitude difference rather than playback masking.
-- Declare song completion after **200 ms of below-threshold audio**.
-- Target playback onset **300 ms after estimated song offset**, not 300 ms after the completion notification.
-- Eventually combine occasional playback with one probabilistic response decision per detected song and configurable onset/offset timing.
-- Apply a shared **15-second minimum interval between issued playback triggers**; drop blocked requests rather than queue them.
-- Reuse the WAVs, note-LSB encoding, and selected playlist order from `xmz_behavior_code`. Bonsai will control playback timing.
-- Prefer established native Bonsai operators and annotated nested workflows. Use a small C# extension only if the native composition becomes cumbersome.
+## Repository layout
 
-## Milestones
+```text
+bonsai/components/  Shared detector logic
+bonsai/protocols/   Protocol workflows
+config/             Rig-computer configuration
+protocols/          Protocol configuration profiles
+steg_song/          Configuration and Bonsai launcher
+```
 
-1. Audio capture, song detection, live inspection, and CSV/WAV logging.
-2. Dry-run playback decisions, then Arduino/116H triggering and measured timing validation.
-3. Optional future playback stack, such as a Windows-controlled Raspberry Pi endpoint, after verifying its acoustic bandwidth and synchronization.
+Rig configuration describes the computer and attached hardware. Protocol
+configuration describes experimental behavior. A run combines exactly one rig
+file with one protocol file and saves the fully resolved configuration beside
+its output.
 
-Current status: the [song detector](bonsai/detect-song.bonsai) uses native comparisons, counters and conditional branches, with editable properties for threshold, minimum span, occupancy and silence timeout. It records energy/events CSV and optional hourly raw audio. Live and replay share the same detector components. Starting threshold: **0.01**. Output triggering is not implemented.
+## Configure this computer
 
-## Start recording on the rig PC
+Copy `config/rig.example.toml` to `config/rig.local.toml` and set:
 
-1. Use Bonsai 2.9.1 with the Audio, Core, and System packages at 2.9.1; install their dependencies through Bonsai's package manager.
-2. Open `bonsai/record-audio.bonsai` and select that PC's AudioMoth in `AudioCapture.DeviceName`.
-3. Inside `WriteWav`, set `AudioWriter.FileName` to a new session directory on the recording disk. Keep 250000 Hz, Mono16, 10-ms buffers, and `WindowCount.Count=360000`.
-4. Start, inspect the waveform, and stop normally to finalize the last WAV. Budget about 1.8 GB per hour.
+- the Bonsai executable;
+- the exact AudioMoth device name shown by Bonsai;
+- the hardware sample rate and format;
+- the directory where session folders should be created.
 
-Current starting configuration: **250 kHz, medium gain, low gain mode enabled, physical switch at CUSTOM**, as reported from the rig. Keep gain and placement documented per session. AudioMoth is the detector input; faithful audio recording is handled separately with Avisoft.
+`rig.local.toml` is ignored because device names and storage paths are specific
+to one computer.
 
-- [Concrete first-milestone plan](docs/milestone-1.md)
-- [Run and configure song detection](docs/detection.md)
-- [Run the simple recorder](docs/recording.md)
-- [Detection pipeline: inputs and outputs](docs/audio-pipeline.md)
-- [Hardware/software setup record](docs/setup.md)
-- [Official examples and community evidence](docs/references.md)
+## Check the recording protocol
 
-The default `recordings/` output directory is ignored by Git; external session storage is preferable for experiments. Exploratory analyses, plots and example-specific results stay in ignored `scratch/`. The generic state tests use Python only to exercise native Bonsai workflows. The standalone recorder remains available unchanged for simple acquisition.
+Python 3.11 or newer is required by the launcher.
+
+```powershell
+conda activate audiomoth
+python -m steg_song check recording --rig config/rig.local.toml
+```
+
+This validates the configuration and prints all derived values without opening
+Bonsai or creating a session.
+
+## Record
+
+```powershell
+python -m steg_song run recording --rig config/rig.local.toml --session mouse-001
+```
+
+The default opens and starts Bonsai so the incoming signal can be inspected.
+Add `--headless` to run without the editor. The launcher creates a new session
+directory and refuses to reuse an existing one.
+
+For the first local test, close any other application using the microphone,
+start a new session, inspect the `AudioCapture` visualizer for 10–20 seconds,
+then stop Bonsai normally with Shift+F5. The session directory should contain
+`run.json` and a timestamped `audio*.wav`. A short run produces one partial
+hour file; the WAV header is finalized when the workflow stops.
+
+The recording protocol uses 10-ms capture buffers and rotates WAV files every
+60 minutes. Those behavioral choices live in
+`protocols/recording.toml`, not in the rig file.
+
+## Detect songs
+
+Song detection has one protocol and one workflow. Two complete TOML profiles
+change only how much data is saved:
+
+| Profile | Raw WAV | `blocks.csv` | `events.csv` |
+| --- | --- | --- | --- |
+| `debug` | yes | yes | yes |
+| `standard` | no | no | yes |
+
+Use `debug` while inspecting and tuning the detector:
+
+```powershell
+python -m steg_song check song_detection --profile debug --rig config/rig.local.toml
+python -m steg_song run song_detection --profile debug --rig config/rig.local.toml --session mouse-001-detection
+```
+
+Once the parameters are settled, use `--profile standard`. Standard is also the
+default when `--profile` is omitted. Both profiles launch
+`bonsai/protocols/song_detection.bonsai`; `save_raw_audio` and
+`save_block_csv` are the only output gates.
+
+Exact setup, signal processing and state semantics are documented in
+`docs/song_detection.md` and `docs/rig_setup.md`.
+
+## Current scope
+
+Recording and live song detection are implemented. Scheduling and playback are
+not yet implemented.

@@ -1,0 +1,260 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WorkflowBuilder Version="2.9.1"
+                 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                 xmlns:dsp="clr-namespace:Bonsai.Dsp;assembly=Bonsai.Dsp"
+                 xmlns:rx="clr-namespace:Bonsai.Reactive;assembly=Bonsai.Core"
+                 xmlns:s="clr-namespace:Bonsai.Scripting.Expressions;assembly=Bonsai.Scripting.Expressions"
+                 xmlns="https://bonsai-rx.org/2018/workflow">
+  <Workflow>
+    <Nodes>
+      <Expression xsi:type="WorkflowInput">
+        <Name>Source1</Name>
+      </Expression>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="SampleRate" DisplayName="FilterSampleRate" Description="Filter sample rate in Hz." />
+      </Expression>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="CutoffHz" DisplayName="HighPassCutoffHz" Description="High-pass cutoff in Hz." />
+      </Expression>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="KernelLength" DisplayName="HighPassKernelLength" Description="High-pass filter kernel length." />
+      </Expression>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="RmsDivisor" DisplayName="RmsDivisor" Description="Square root of samples per capture block." />
+      </Expression>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="RmsThreshold" DisplayName="RmsThreshold" Description="Strict full-scale RMS activity threshold." />
+      </Expression>
+      <Expression xsi:type="GroupWorkflow">
+        <Name>BandEnergy</Name>
+        <Description>Convert Mono16 input, high-pass filter it, and calculate full-scale RMS activity.</Description>
+        <Workflow>
+          <Nodes>
+            <Expression xsi:type="WorkflowInput">
+              <Name>Source1</Name>
+            </Expression>
+            <Expression xsi:type="Combinator">
+              <Combinator xsi:type="dsp:ConvertScale">
+                <dsp:Depth>F32</dsp:Depth>
+                <dsp:Scale>0.000030517578125</dsp:Scale>
+                <dsp:Shift>0</dsp:Shift>
+              </Combinator>
+            </Expression>
+            <Expression xsi:type="ExternalizedMapping">
+              <Property Name="SampleRate" DisplayName="SampleRate" Description="Filter sample rate in Hz." />
+            </Expression>
+            <Expression xsi:type="ExternalizedMapping">
+              <Property Name="Cutoff1" DisplayName="CutoffHz" Description="High-pass cutoff in Hz." />
+            </Expression>
+            <Expression xsi:type="ExternalizedMapping">
+              <Property Name="KernelLength" DisplayName="KernelLength" Description="High-pass filter kernel length." />
+            </Expression>
+            <Expression xsi:type="Combinator">
+              <Combinator xsi:type="dsp:FrequencyFilter">
+                <dsp:SampleRate>250000</dsp:SampleRate>
+                <dsp:Cutoff1>20000</dsp:Cutoff1>
+                <dsp:Cutoff2>0</dsp:Cutoff2>
+                <dsp:KernelLength>60</dsp:KernelLength>
+                <dsp:FilterType>HighPass</dsp:FilterType>
+              </Combinator>
+            </Expression>
+            <Expression xsi:type="Combinator">
+              <Combinator xsi:type="dsp:Norm">
+                <dsp:NormType>L2</dsp:NormType>
+              </Combinator>
+            </Expression>
+            <Expression xsi:type="ExternalizedMapping">
+              <Property Name="Value" DisplayName="RmsDivisor" Description="Square root of samples per capture block." />
+            </Expression>
+            <Expression xsi:type="Divide">
+              <Operand xsi:type="DoubleProperty">
+                <Value>50</Value>
+              </Operand>
+            </Expression>
+            <Expression xsi:type="ExternalizedMapping">
+              <Property Name="Value" DisplayName="RmsThreshold" Description="Strict full-scale RMS activity threshold." />
+            </Expression>
+            <Expression xsi:type="GreaterThan">
+              <Operand xsi:type="DoubleProperty">
+                <Value>0.01</Value>
+              </Operand>
+            </Expression>
+            <Expression xsi:type="Combinator">
+              <Combinator xsi:type="rx:Zip" />
+            </Expression>
+            <Expression xsi:type="WorkflowOutput" />
+          </Nodes>
+          <Edges>
+            <Edge From="0" To="1" Label="Source1" />
+            <Edge From="1" To="5" Label="Source1" />
+            <Edge From="2" To="5" Label="Source1" />
+            <Edge From="3" To="5" Label="Source1" />
+            <Edge From="4" To="5" Label="Source1" />
+            <Edge From="5" To="6" Label="Source1" />
+            <Edge From="6" To="8" Label="Source1" />
+            <Edge From="7" To="8" Label="Source1" />
+            <Edge From="8" To="10" Label="Source1" />
+            <Edge From="9" To="10" Label="Source1" />
+            <Edge From="8" To="11" Label="Source1" />
+            <Edge From="10" To="11" Label="Source2" />
+            <Edge From="11" To="12" Label="Source1" />
+          </Edges>
+        </Workflow>
+      </Expression>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="MinSpanBlocks" DisplayName="MinimumSpanBlocks" Description="Minimum active-to-active span in blocks." />
+      </Expression>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="MinOccupancy" DisplayName="MinimumOccupancy" Description="Minimum active-block fraction." />
+      </Expression>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="QuietBlocks" DisplayName="EndSilenceBlocks" Description="Consecutive quiet blocks ending a candidate." />
+      </Expression>
+      <Expression xsi:type="GroupWorkflow">
+        <Name>SongState</Name>
+        <Description>Advance, update, decide and emit one detector state per audio block.</Description>
+        <Workflow>
+          <Nodes>
+            <Expression xsi:type="WorkflowInput">
+              <Name>Source1</Name>
+            </Expression>
+            <Expression xsi:type="ExternalizedMapping">
+              <Property Name="Value" DisplayName="MinSpanBlocks" Description="Minimum active-to-active span in blocks." />
+            </Expression>
+            <Expression xsi:type="Combinator">
+              <Combinator xsi:type="Int64Property">
+                <Value>150</Value>
+              </Combinator>
+            </Expression>
+            <Expression xsi:type="ExternalizedMapping">
+              <Property Name="Value" DisplayName="MinOccupancy" Description="Minimum active-block fraction." />
+            </Expression>
+            <Expression xsi:type="Combinator">
+              <Combinator xsi:type="DoubleProperty">
+                <Value>0.2</Value>
+              </Combinator>
+            </Expression>
+            <Expression xsi:type="ExternalizedMapping">
+              <Property Name="Value" DisplayName="QuietBlocks" Description="Consecutive quiet blocks ending a candidate." />
+            </Expression>
+            <Expression xsi:type="Combinator">
+              <Combinator xsi:type="Int64Property">
+                <Value>25</Value>
+              </Combinator>
+            </Expression>
+            <Expression xsi:type="Combinator">
+              <Combinator xsi:type="rx:Zip" />
+            </Expression>
+            <Expression xsi:type="s:ExpressionTransform">
+              <s:Name>Settings</s:Name>
+              <s:Expression>new(Item1.Item1 as Rms, Item1.Item2 as Active, Item2 as MinSpanBlocks, Item3 as MinOccupancy, Item4 as QuietBlocks)</s:Expression>
+            </Expression>
+            <Expression xsi:type="Combinator">
+              <Combinator xsi:type="rx:Range">
+                <rx:Start>0</rx:Start>
+                <rx:Count>1</rx:Count>
+              </Combinator>
+            </Expression>
+            <Expression xsi:type="s:ExpressionTransform">
+              <s:Name>InitialState</s:Name>
+              <s:Expression>new(Int64(-1) as BlockIndex, 0.0 as Rms, false as Active, Int64(0) as CandidateId, Int64(-1) as OnsetBlock, Int64(-1) as LastActiveEndBlock, Int64(0) as ActiveBlocks, false as Confirmed, &quot;&quot; as Event)</s:Expression>
+            </Expression>
+            <Expression xsi:type="rx:Scan">
+              <Name>UpdateState</Name>
+              <Description>One synchronous state transition per audio block.</Description>
+              <Workflow>
+                <Nodes>
+                  <Expression xsi:type="WorkflowInput">
+                    <Name>Source1</Name>
+                  </Expression>
+                  <Expression xsi:type="s:ExpressionTransform">
+                    <s:Name>Advance</s:Name>
+                    <s:Expression>new(
+  Accumulation as Previous,
+  Value as Input,
+  Accumulation.BlockIndex + 1 as Index,
+  (Accumulation.OnsetBlock &gt;= 0 &amp;&amp; Accumulation.Event != &quot;completed&quot; &amp;&amp; Accumulation.Event != &quot;rejected&quot;) as Open)</s:Expression>
+                  </Expression>
+                  <Expression xsi:type="s:ExpressionTransform">
+                    <s:Name>UpdateCandidate</s:Name>
+                    <s:Expression>new(
+  Input as Config,
+  Index as BlockIndex,
+  Input.Rms as Rms,
+  Input.Active as Active,
+  Previous.CandidateId + (!Open &amp;&amp; Input.Active ? 1 : 0) as CandidateId,
+  (Open ? Previous.OnsetBlock : (Input.Active ? Index : Int64(-1))) as OnsetBlock,
+  (Input.Active ? Index + 1 : (Open ? Previous.LastActiveEndBlock : Int64(-1))) as LastActiveEndBlock,
+  (Open ? Previous.ActiveBlocks : Int64(0)) + (Input.Active ? 1 : 0) as ActiveBlocks,
+  (Open &amp;&amp; Previous.Confirmed) as WasConfirmed)</s:Expression>
+                  </Expression>
+                  <Expression xsi:type="s:ExpressionTransform">
+                    <s:Name>Decide</s:Name>
+                    <s:Expression>new(
+  it as Candidate,
+  (OnsetBlock &gt;= 0 &amp;&amp; BlockIndex + 1 - LastActiveEndBlock &gt;= Config.QuietBlocks) as Ended,
+  (Active &amp;&amp; !WasConfirmed &amp;&amp; LastActiveEndBlock - OnsetBlock &gt;= Config.MinSpanBlocks &amp;&amp;
+   ActiveBlocks * 1.0 / (LastActiveEndBlock - OnsetBlock) &gt;= Config.MinOccupancy) as ConfirmNow)</s:Expression>
+                  </Expression>
+                  <Expression xsi:type="s:ExpressionTransform">
+                    <s:Name>Emit</s:Name>
+                    <s:Expression>new(
+  Candidate.BlockIndex as BlockIndex,
+  Candidate.Rms as Rms,
+  Candidate.Active as Active,
+  Candidate.CandidateId as CandidateId,
+  Candidate.OnsetBlock as OnsetBlock,
+  Candidate.LastActiveEndBlock as LastActiveEndBlock,
+  Candidate.ActiveBlocks as ActiveBlocks,
+  (Candidate.WasConfirmed || ConfirmNow) as Confirmed,
+  (Ended ? (Candidate.WasConfirmed ? &quot;completed&quot; : &quot;rejected&quot;) : (ConfirmNow ? &quot;confirmed&quot; : &quot;&quot;)) as Event)</s:Expression>
+                  </Expression>
+                  <Expression xsi:type="WorkflowOutput" />
+                </Nodes>
+                <Edges>
+                  <Edge From="0" To="1" Label="Source1" />
+                  <Edge From="1" To="2" Label="Source1" />
+                  <Edge From="2" To="3" Label="Source1" />
+                  <Edge From="3" To="4" Label="Source1" />
+                  <Edge From="4" To="5" Label="Source1" />
+                </Edges>
+              </Workflow>
+            </Expression>
+            <Expression xsi:type="WorkflowOutput" />
+          </Nodes>
+          <Edges>
+            <Edge From="0" To="2" Label="Source1" />
+            <Edge From="1" To="2" Label="Source1" />
+            <Edge From="0" To="4" Label="Source1" />
+            <Edge From="3" To="4" Label="Source1" />
+            <Edge From="0" To="6" Label="Source1" />
+            <Edge From="5" To="6" Label="Source1" />
+            <Edge From="0" To="7" Label="Source1" />
+            <Edge From="2" To="7" Label="Source2" />
+            <Edge From="4" To="7" Label="Source3" />
+            <Edge From="6" To="7" Label="Source4" />
+            <Edge From="7" To="8" Label="Source1" />
+            <Edge From="9" To="10" Label="Source1" />
+            <Edge From="8" To="11" Label="Source1" />
+            <Edge From="10" To="11" Label="Source2" />
+            <Edge From="11" To="12" Label="Source1" />
+          </Edges>
+        </Workflow>
+      </Expression>
+      <Expression xsi:type="WorkflowOutput" />
+    </Nodes>
+    <Edges>
+      <Edge From="0" To="6" Label="Source1" />
+      <Edge From="1" To="6" Label="Source1" />
+      <Edge From="2" To="6" Label="Source1" />
+      <Edge From="3" To="6" Label="Source1" />
+      <Edge From="4" To="6" Label="Source1" />
+      <Edge From="5" To="6" Label="Source1" />
+      <Edge From="6" To="10" Label="Source1" />
+      <Edge From="7" To="10" Label="Source1" />
+      <Edge From="8" To="10" Label="Source1" />
+      <Edge From="9" To="10" Label="Source1" />
+      <Edge From="10" To="11" Label="Source1" />
+    </Edges>
+  </Workflow>
+</WorkflowBuilder>

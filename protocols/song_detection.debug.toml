@@ -1,0 +1,22 @@
+[protocol]
+name = "song_detection"
+profile = "debug"
+workflow = "bonsai/protocols/song_detection.bonsai"
+
+[acquisition]
+buffer_ms = 10
+
+[signal_processing]
+high_pass_hz = 20000
+high_pass_kernel_length = 60
+
+[song_detection]
+rms_threshold = 0.01
+minimum_span_ms = 1500
+minimum_occupancy = 0.20
+end_silence_ms = 250
+
+[output]
+save_raw_audio = true
+save_block_csv = true
+wav_split_minutes = 60

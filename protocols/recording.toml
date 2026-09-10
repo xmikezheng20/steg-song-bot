@@ -1,0 +1,9 @@
+[protocol]
+name = "recording"
+workflow = "bonsai/protocols/recording.bonsai"
+
+[acquisition]
+buffer_ms = 10
+
+[recording]
+wav_split_minutes = 60

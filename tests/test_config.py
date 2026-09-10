@@ -1,0 +1,178 @@
+from pathlib import Path
+import tempfile
+import unittest
+import xml.etree.ElementTree as ElementTree
+
+from steg_song.config import (
+    ConfigError,
+    SongDetectionRun,
+    load_recording_run,
+    load_run,
+    load_song_detection_run,
+    validate_session_id,
+)
+from steg_song.cli import _bonsai_command, _remove_disabled_outputs
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+WORKFLOW_NAMESPACE = "https://bonsai-rx.org/2018/workflow"
+XSI_TYPE = "{http://www.w3.org/2001/XMLSchema-instance}type"
+
+
+class RecordingConfigTests(unittest.TestCase):
+    def test_recording_protocol_derives_block_geometry(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            bonsai = root / "Bonsai.exe"
+            bonsai.touch()
+            rig = root / "rig.toml"
+            rig.write_text(
+                f'''[bonsai]
+executable = "{bonsai.as_posix()}"
+[audio_input]
+device_name = "AudioMoth"
+sample_rate_hz = 250000
+sample_format = "Mono16"
+gain = "medium"
+low_gain_mode = true
+switch_position = "CUSTOM"
+[storage]
+session_root = "{(root / 'sessions').as_posix()}"
+''',
+                encoding="utf-8",
+            )
+
+            run = load_recording_run(REPO_ROOT, rig, "recording")
+
+            self.assertEqual(run.samples_per_block, 2500)
+            self.assertEqual(run.blocks_per_wav, 360000)
+            self.assertEqual(run.wav_split_minutes, 60)
+
+    def test_session_id_rejects_paths(self) -> None:
+        with self.assertRaises(ConfigError):
+            validate_session_id("../existing")
+
+    def test_song_detection_profiles_derive_the_same_detector_settings(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            bonsai = root / "Bonsai.exe"
+            bonsai.touch()
+            rig = root / "rig.toml"
+            rig.write_text(
+                f'''[bonsai]
+executable = "{bonsai.as_posix()}"
+[audio_input]
+device_name = "AudioMoth"
+sample_rate_hz = 250000
+sample_format = "Mono16"
+gain = "medium"
+low_gain_mode = true
+switch_position = "CUSTOM"
+[storage]
+session_root = "{(root / 'sessions').as_posix()}"
+''',
+                encoding="utf-8",
+            )
+
+            debug = load_song_detection_run(REPO_ROOT, rig, "debug")
+            standard = load_song_detection_run(REPO_ROOT, rig, "standard")
+
+            self.assertIsInstance(debug, SongDetectionRun)
+            self.assertIsInstance(standard, SongDetectionRun)
+            self.assertEqual(debug.workflow, standard.workflow)
+            self.assertEqual(debug.minimum_span_blocks, 150)
+            self.assertEqual(standard.minimum_span_blocks, 150)
+            self.assertEqual(debug.end_silence_blocks, 25)
+            self.assertEqual(standard.end_silence_blocks, 25)
+            self.assertEqual(debug.rms_divisor, 50)
+            self.assertEqual(debug.blocks_per_wav, 360000)
+            self.assertEqual(debug.audiomoth_gain, "medium")
+            self.assertTrue(debug.low_gain_mode)
+            self.assertTrue(debug.save_raw_audio)
+            self.assertTrue(debug.save_block_csv)
+            self.assertFalse(standard.save_raw_audio)
+            self.assertFalse(standard.save_block_csv)
+
+            debug_command = " ".join(
+                _bonsai_command(debug, root / "debug", headless=True)
+            )
+            standard_command = " ".join(
+                _bonsai_command(standard, root / "standard", headless=True)
+            )
+            for command in (debug_command, standard_command):
+                self.assertIn("WavOutputFile=", command)
+                self.assertIn("BlockLogFile=", command)
+                self.assertIn("EventLogFile=", command)
+            self.assertIn("SaveRawAudio=true", debug_command)
+            self.assertIn("SaveBlockCsv=true", debug_command)
+            self.assertIn("SaveRawAudio=false", standard_command)
+            self.assertIn("SaveBlockCsv=false", standard_command)
+
+            default = load_run(REPO_ROOT, rig, "song_detection")
+            self.assertIsInstance(default, SongDetectionRun)
+            self.assertEqual(default.profile_name, "standard")
+
+            output = root / "standard"
+            output.mkdir()
+            for name in ("blocks.csv", "audio.wav", "events.csv"):
+                (output / name).touch()
+            _remove_disabled_outputs(standard, output)
+            self.assertFalse((output / "blocks.csv").exists())
+            self.assertFalse((output / "audio.wav").exists())
+            self.assertTrue((output / "events.csv").exists())
+
+
+class BonsaiWorkflowTests(unittest.TestCase):
+    def test_nested_property_mappings_resolve(self) -> None:
+        for path in (REPO_ROOT / "bonsai").rglob("*.bonsai"):
+            if path.is_file():
+                workflow = ElementTree.parse(path).getroot().find(
+                    f"{{{WORKFLOW_NAMESPACE}}}Workflow"
+                )
+                self._check_workflow(workflow, path)
+
+    def _check_workflow(
+        self, workflow: ElementTree.Element, source_path: Path
+    ) -> None:
+        nodes = list(workflow.find(f"{{{WORKFLOW_NAMESPACE}}}Nodes"))
+        edges = list(workflow.find(f"{{{WORKFLOW_NAMESPACE}}}Edges"))
+
+        for index, node in enumerate(nodes):
+            nested = node.find(f"{{{WORKFLOW_NAMESPACE}}}Workflow")
+            if nested is not None:
+                self._check_workflow(nested, source_path)
+
+            if node.get(XSI_TYPE) != "ExternalizedMapping":
+                continue
+            mapping = node.find(f"{{{WORKFLOW_NAMESPACE}}}Property")
+            for edge in edges:
+                if int(edge.get("From")) != index:
+                    continue
+                target = nodes[int(edge.get("To"))]
+                target_workflow = target.find(
+                    f"{{{WORKFLOW_NAMESPACE}}}Workflow"
+                )
+                if target.get(XSI_TYPE) == "IncludeWorkflow":
+                    included = (source_path.parent / target.get("Path")).resolve()
+                    target_workflow = ElementTree.parse(included).getroot().find(
+                        f"{{{WORKFLOW_NAMESPACE}}}Workflow"
+                    )
+                if target_workflow is None:
+                    continue
+                exposed = {
+                    item.find(f"{{{WORKFLOW_NAMESPACE}}}Property").get("DisplayName")
+                    for item in target_workflow.find(
+                        f"{{{WORKFLOW_NAMESPACE}}}Nodes"
+                    )
+                    if item.get(XSI_TYPE) == "ExternalizedMapping"
+                }
+                self.assertIn(
+                    mapping.get("Name"),
+                    exposed,
+                    f"{source_path}: {mapping.get('DisplayName')} targets a missing "
+                    f"nested property {mapping.get('Name')}",
+                )
+
+
+if __name__ == "__main__":
+    unittest.main()

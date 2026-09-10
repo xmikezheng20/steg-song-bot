@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WorkflowBuilder Version="2.9.1"
+                 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                 xmlns:al="clr-namespace:Bonsai.Audio;assembly=Bonsai.Audio"
+                 xmlns:rx="clr-namespace:Bonsai.Reactive;assembly=Bonsai.Core"
+                 xmlns="https://bonsai-rx.org/2018/workflow">
+  <Workflow>
+    <Nodes>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="DeviceName" DisplayName="AudioDevice" Description="Audio input device." />
+      </Expression>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="SampleRate" DisplayName="AudioSampleRate" Description="Audio sample rate in Hz." />
+      </Expression>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="SampleFormat" DisplayName="AudioSampleFormat" Description="Audio channel and sample format." />
+      </Expression>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="BufferLength" DisplayName="AudioBufferMs" Description="Capture buffer duration in milliseconds." />
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="al:AudioCapture">
+          <al:DeviceName>Microphone (250kHz AudioMoth US</al:DeviceName>
+          <al:SampleRate>250000</al:SampleRate>
+          <al:SampleFormat>Mono16</al:SampleFormat>
+          <al:BufferLength>10</al:BufferLength>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="Count" DisplayName="WavFileBlocks" Description="Capture blocks per WAV file." />
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="rx:WindowCount">
+          <rx:Count>360000</rx:Count>
+          <rx:Skip xsi:nil="true" />
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="OutputFile" DisplayName="WavOutputFile" Description="Base path for timestamped WAV files." />
+      </Expression>
+      <Expression xsi:type="ExternalizedMapping">
+        <Property Name="SampleRate" DisplayName="WavSampleRate" Description="Sample rate written to WAV headers." />
+      </Expression>
+      <Expression xsi:type="rx:SelectMany">
+        <Name>WriteWav</Name>
+        <Description>Write each counted window to a WAV file.</Description>
+        <Workflow>
+          <Nodes>
+            <Expression xsi:type="WorkflowInput">
+              <Name>Source1</Name>
+            </Expression>
+            <Expression xsi:type="ExternalizedMapping">
+              <Property Name="FileName" DisplayName="OutputFile" Description="Base WAV output path." />
+            </Expression>
+            <Expression xsi:type="ExternalizedMapping">
+              <Property Name="SampleRate" DisplayName="SampleRate" Description="WAV header sample rate." />
+            </Expression>
+            <Expression xsi:type="Combinator">
+              <Combinator xsi:type="al:AudioWriter">
+                <al:FileName>audio.wav</al:FileName>
+                <al:Suffix>Timestamp</al:Suffix>
+                <al:Buffered>true</al:Buffered>
+                <al:Overwrite>false</al:Overwrite>
+                <al:SampleRate>250000</al:SampleRate>
+              </Combinator>
+            </Expression>
+            <Expression xsi:type="WorkflowOutput" />
+          </Nodes>
+          <Edges>
+            <Edge From="0" To="3" Label="Source1" />
+            <Edge From="1" To="3" Label="Source1" />
+            <Edge From="2" To="3" Label="Source1" />
+            <Edge From="3" To="4" Label="Source1" />
+          </Edges>
+        </Workflow>
+      </Expression>
+      <Expression xsi:type="WorkflowOutput" />
+    </Nodes>
+    <Edges>
+      <Edge From="0" To="4" Label="Source1" />
+      <Edge From="1" To="4" Label="Source1" />
+      <Edge From="2" To="4" Label="Source1" />
+      <Edge From="3" To="4" Label="Source1" />
+      <Edge From="4" To="6" Label="Source1" />
+      <Edge From="5" To="6" Label="Source1" />
+      <Edge From="6" To="9" Label="Source1" />
+      <Edge From="7" To="9" Label="Source1" />
+      <Edge From="8" To="9" Label="Source1" />
+      <Edge From="9" To="10" Label="Source1" />
+    </Edges>
+  </Workflow>
+</WorkflowBuilder>

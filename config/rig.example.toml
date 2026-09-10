@@ -1,0 +1,15 @@
+# Copy this file to rig.local.toml and edit it for one rig computer.
+
+[bonsai]
+executable = "C:/Users/USER/AppData/Local/Bonsai/Bonsai.exe"
+
+[audio_input]
+device_name = "Microphone (250kHz AudioMoth US"
+sample_rate_hz = 250000
+sample_format = "Mono16"
+gain = "medium"
+low_gain_mode = true
+switch_position = "CUSTOM"
+
+[storage]
+session_root = "D:/steg-song-sessions"
