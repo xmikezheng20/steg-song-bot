@@ -19,7 +19,7 @@ end_silence_ms = 250
 [playback]
 passive_interval_seconds = 120
 song_trigger_delay_ms = 50
-song_trigger_probability = 0.80
+song_trigger_probability = 0.60
 trigger_lockout_seconds = 12
 
 [output]
