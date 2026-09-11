@@ -1,0 +1,28 @@
+[protocol]
+name = "combined_playback"
+profile = "debug"
+workflow = "bonsai/protocols/combined_playback.bonsai"
+
+[acquisition]
+buffer_ms = 10
+
+[signal_processing]
+high_pass_hz = 20000
+high_pass_kernel_length = 60
+
+[song_detection]
+rms_threshold = 0.01
+minimum_span_ms = 1500
+minimum_occupancy = 0.20
+end_silence_ms = 250
+
+[playback]
+passive_interval_seconds = 120
+song_trigger_delay_ms = 50
+song_trigger_probability = 0.80
+trigger_lockout_seconds = 12
+
+[output]
+save_raw_audio = true
+save_block_csv = true
+wav_split_minutes = 60

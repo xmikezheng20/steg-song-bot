@@ -5,11 +5,13 @@ import csv
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+import secrets
 import subprocess
 import threading
 from typing import Sequence, TextIO
 
 from .config import (
+    CombinedPlaybackRun,
     ConfigError,
     PassivePlaybackRun,
     ProtocolRun,
@@ -59,12 +61,17 @@ def _parser() -> argparse.ArgumentParser:
 def _common_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "protocol",
-        choices=("recording", "song_detection", "passive_playback"),
+        choices=(
+            "recording",
+            "song_detection",
+            "passive_playback",
+            "combined_playback",
+        ),
     )
     parser.add_argument(
         "--profile",
         choices=("standard", "debug"),
-        help="song-detection config profile (default: standard)",
+        help="standard/debug profile for detection protocols (default: standard)",
     )
     parser.add_argument("--rig", type=Path, required=True, help="path to rig TOML")
 
@@ -79,7 +86,12 @@ def _run_bonsai(
         raise ConfigError(f"Session directory already exists: {session_dir}")
     session_dir.mkdir(parents=True)
 
-    command = _bonsai_command(run, session_dir, headless)
+    random_seed = (
+        secrets.randbelow(2_147_483_646) + 1
+        if isinstance(run, CombinedPlaybackRun)
+        else None
+    )
+    command = _bonsai_command(run, session_dir, headless, random_seed)
     manifest_path = session_dir / "run.json"
     manifest = {
         "status": "starting",
@@ -90,6 +102,8 @@ def _run_bonsai(
         "session": {"id": session_id, "directory": str(session_dir.resolve())},
         "command": command,
     }
+    if random_seed is not None:
+        manifest["scheduler_random_seed"] = random_seed
     _write_json(manifest_path, manifest)
 
     monitor_stop: threading.Event | None = None
@@ -105,10 +119,14 @@ def _run_bonsai(
             daemon=True,
         )
         monitor_thread.start()
-    elif isinstance(run, PassivePlaybackRun):
+    if isinstance(run, (PassivePlaybackRun, CombinedPlaybackRun)):
         playback_event_path = session_dir / "playback_events.csv"
+        if isinstance(run, CombinedPlaybackRun):
+            message = "Live playback decisions and Arduino responses"
+        else:
+            message = "Live Arduino responses"
         print(
-            "Live Arduino responses will appear below. "
+            f"{message} will appear below. "
             f"Full log: {playback_event_path.resolve()}"
         )
 
@@ -136,6 +154,7 @@ def _bonsai_command(
     run: ProtocolRun | PassivePlaybackRun,
     session_dir: Path,
     headless: bool,
+    random_seed: int | None = None,
 ) -> list[str]:
     command = [str(run.bonsai_executable), str(run.workflow)]
     command.append("--no-editor" if headless else "--start")
@@ -181,9 +200,23 @@ def _bonsai_command(
             {
                 "ArduinoPort": run.serial_port,
                 "ArduinoBaudRate": run.serial_baud_rate,
-                "PlaybackInterval": _format_bonsai_timespan(
-                    run.interval_seconds
-                ),
+            }
+        )
+        properties["PlaybackInterval"] = _format_bonsai_timespan(
+            run.interval_seconds
+        )
+    if isinstance(run, CombinedPlaybackRun):
+        if random_seed is None:
+            raise ValueError("combined playback requires a scheduler random seed")
+        properties.update(
+            {
+                "PassiveIntervalBlocks": run.passive_interval_blocks,
+                "SongTriggerDelayBlocks": run.song_trigger_delay_blocks,
+                "SongTriggerProbability": run.song_trigger_probability,
+                "TriggerLockoutBlocks": run.trigger_lockout_blocks,
+                "SchedulerRandomSeed": random_seed,
+                "ArduinoPort": run.serial_port,
+                "ArduinoBaudRate": run.serial_baud_rate,
             }
         )
     for name, value in properties.items():

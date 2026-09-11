@@ -3,13 +3,13 @@
 Closed-loop song experiments for *Scotinomys teguina*, built as a set of small
 protocols around Bonsai.
 
-The repository is being rebuilt protocol by protocol. Recording, live song
-detection and passive playback triggering are the first protocols.
+The repository is organized as small protocols for recording, live song
+detection, passive playback testing and combined passive/song-triggered playback.
 
 ## Repository layout
 
 ```text
-bonsai/components/  Shared detector logic
+bonsai/components/  Shared workflow building blocks
 bonsai/protocols/   Protocol workflows
 config/             Rig-computer configuration
 protocols/          Protocol configuration profiles
@@ -111,7 +111,27 @@ The first trigger occurs after one complete interval. Arduino responses appear
 in the command window and are saved immediately to `playback_events.csv`.
 Firmware, wiring and test instructions are in `docs/passive_playback.md`.
 
+## Run combined playback
+
+Combined playback keeps song detection running continuously while one scheduler
+handles both trigger sources. Passive attempts stay on a fixed 120-second clock.
+A completed detected song produces an attempt 50 ms later with 80% probability.
+Accepted triggers share a 12-second lockout measured from the previous playback
+start; attempts during that interval are logged and discarded, never queued.
+
+Use the debug profile for initial testing:
+
+```powershell
+python -m steg_song check combined_playback --profile debug --rig config/rig.local.toml
+python -m steg_song run combined_playback --profile debug --rig config/rig.local.toml --session combined-test
+```
+
+The command window and `playback_events.csv` show every playback decision and
+Arduino response. Use `--profile standard` after validating the detector; it
+runs the same workflow without saving raw WAV or per-block CSV data. Exact
+scheduler behavior and test instructions are in `docs/combined_playback.md`.
+
 ## Current scope
 
-Recording, live song detection and fixed-interval passive playback triggering
-are implemented. Song-triggered and combined playback are not yet implemented.
+Recording, live song detection, fixed-interval passive playback and combined
+passive/song-triggered playback are implemented.

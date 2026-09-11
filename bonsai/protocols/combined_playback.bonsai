@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WorkflowBuilder Version="2.9.1"
+                 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                 xmlns:io="clr-namespace:Bonsai.IO;assembly=Bonsai.System"
+                 xmlns:s="clr-namespace:Bonsai.Scripting.Expressions;assembly=Bonsai.Scripting.Expressions"
+                 xmlns="https://bonsai-rx.org/2018/workflow">
+  <Workflow>
+    <Nodes>
+      <Expression xsi:type="ExternalizedMapping"><Property Name="AudioDevice" DisplayName="AudioDevice" Description="Audio input device." /></Expression>
+      <Expression xsi:type="ExternalizedMapping"><Property Name="AudioSampleRate" DisplayName="AudioSampleRate" Description="Audio sample rate in Hz." /></Expression>
+      <Expression xsi:type="ExternalizedMapping"><Property Name="AudioSampleFormat" DisplayName="AudioSampleFormat" Description="Audio channel and sample format." /></Expression>
+      <Expression xsi:type="ExternalizedMapping"><Property Name="AudioBufferMs" DisplayName="AudioBufferMs" Description="Audio block duration in milliseconds." /></Expression>
+      <Expression xsi:type="ExternalizedMapping"><Property Name="SaveRawAudio" DisplayName="SaveRawAudio" Description="Write raw audio for debugging." /></Expression>
+      <Expression xsi:type="ExternalizedMapping"><Property Name="WavFileBlocks" DisplayName="WavFileBlocks" Description="Audio blocks per WAV file." /></Expression>
+      <Expression xsi:type="ExternalizedMapping"><Property Name="WavOutputFile" DisplayName="WavOutputFile" Description="Base WAV output path." /></Expression>
+      <Expression xsi:type="ExternalizedMapping"><Property Name="WavSampleRate" DisplayName="WavSampleRate" Description="WAV header sample rate." /></Expression>
+      <Expression xsi:type="ExternalizedMapping"><Property Name="FilterSampleRate" DisplayName="FilterSampleRate" Description="Filter sample rate." /></Expression>
+      <Expression xsi:type="ExternalizedMapping"><Property Name="HighPassCutoffHz" DisplayName="HighPassCutoffHz" Description="High-pass cutoff in Hz." /></Expression>
+      <Expression xsi:type="ExternalizedMapping"><Property Name="HighPassKernelLength" DisplayName="HighPassKernelLength" Description="High-pass kernel length." /></Expression>
+      <Expression xsi:type="ExternalizedMapping"><Property Name="RmsDivisor" DisplayName="RmsDivisor" Description="RMS normalization divisor." /></Expression>
+      <Expression xsi:type="ExternalizedMapping"><Property Name="RmsThreshold" DisplayName="RmsThreshold" Description="Detector activity threshold." /></Expression>
+      <Expression xsi:type="ExternalizedMapping"><Property Name="MinimumSpanBlocks" DisplayName="MinimumSpanBlocks" Description="Minimum song span in blocks." /></Expression>
+      <Expression xsi:type="ExternalizedMapping"><Property Name="MinimumOccupancy" DisplayName="MinimumOccupancy" Description="Minimum active-block fraction." /></Expression>
+      <Expression xsi:type="ExternalizedMapping"><Property Name="EndSilenceBlocks" DisplayName="EndSilenceBlocks" Description="Quiet blocks completing a song." /></Expression>
+      <Expression xsi:type="ExternalizedMapping"><Property Name="SaveBlockCsv" DisplayName="SaveBlockCsv" Description="Write per-block detector data." /></Expression>
+      <Expression xsi:type="ExternalizedMapping"><Property Name="BlockLogFile" DisplayName="BlockLogFile" Description="Per-block detector log path." /></Expression>
+      <Expression xsi:type="ExternalizedMapping"><Property Name="EventLogFile" DisplayName="EventLogFile" Description="Detector event log path." /></Expression>
+      <Expression xsi:type="IncludeWorkflow" Path="song_detection.bonsai" />
+
+      <Expression xsi:type="ExternalizedMapping"><Property Name="Value" DisplayName="PassiveIntervalBlocks" Description="Blocks between fixed passive attempts." /></Expression>
+      <Expression xsi:type="Combinator"><Combinator xsi:type="Int64Property"><Value>12000</Value></Combinator></Expression>
+      <Expression xsi:type="ExternalizedMapping"><Property Name="Value" DisplayName="SongTriggerDelayBlocks" Description="Blocks from song completion to its attempt." /></Expression>
+      <Expression xsi:type="Combinator"><Combinator xsi:type="Int64Property"><Value>5</Value></Combinator></Expression>
+      <Expression xsi:type="ExternalizedMapping"><Property Name="Value" DisplayName="SongTriggerProbability" Description="Probability for eligible song attempts." /></Expression>
+      <Expression xsi:type="Combinator"><Combinator xsi:type="DoubleProperty"><Value>0.8</Value></Combinator></Expression>
+      <Expression xsi:type="ExternalizedMapping"><Property Name="Value" DisplayName="TriggerLockoutBlocks" Description="Minimum blocks between accepted triggers." /></Expression>
+      <Expression xsi:type="Combinator"><Combinator xsi:type="Int64Property"><Value>1200</Value></Combinator></Expression>
+      <Expression xsi:type="ExternalizedMapping"><Property Name="Value" DisplayName="SchedulerRandomSeed" Description="Per-session scheduler random seed." /></Expression>
+      <Expression xsi:type="Combinator"><Combinator xsi:type="Int64Property"><Value>1</Value></Combinator></Expression>
+      <Expression xsi:type="IncludeWorkflow" Path="../components/playback_scheduler.bonsai" />
+
+      <Expression xsi:type="Condition">
+        <Name>AttemptsOnly</Name>
+        <Description>Keep blocks containing a song or passive playback attempt.</Description>
+        <Workflow>
+          <Nodes>
+            <Expression xsi:type="WorkflowInput"><Name>Source1</Name></Expression>
+            <Expression xsi:type="s:ExpressionTransform"><s:Expression>SongDue || PassiveDue</s:Expression></Expression>
+            <Expression xsi:type="WorkflowOutput" />
+          </Nodes>
+          <Edges><Edge From="0" To="1" Label="Source1" /><Edge From="1" To="2" Label="Source1" /></Edges>
+        </Workflow>
+      </Expression>
+      <Expression xsi:type="s:ExpressionTransform">
+        <s:Name>FormatDecision</s:Name>
+        <s:Expression>&quot;[playback] &quot; +
+  (Trigger ? &quot;TRIGGER source=&quot; + TriggerSource : &quot;SKIP source=&quot; + (SongDue ? &quot;song&quot; : &quot;passive&quot;)) +
+  &quot; block=&quot; + BlockIndex.ToString() +
+  (SongDue ? &quot; candidate=&quot; + CandidateId.ToString() + &quot; completion_block=&quot; + CompletionBlock.ToString() + (Draw &gt;= 0 ? &quot; draw=&quot; + Draw.ToString(&quot;0.000&quot;) : &quot;&quot;) + &quot; probability=&quot; + Probability.ToString(&quot;0.00&quot;) : &quot;&quot;) +
+  (PassiveDue ? &quot; passive_due=true&quot; : &quot;&quot;) +
+  (Reason != &quot;&quot; ? &quot; reason=&quot; + Reason : &quot;&quot;) +
+  (BlocksSinceLastTrigger &gt;= 0 ? &quot; blocks_since_previous=&quot; + BlocksSinceLastTrigger.ToString() : &quot;&quot;)</s:Expression>
+      </Expression>
+      <Expression xsi:type="Combinator"><Combinator xsi:type="io:WriteLine" /></Expression>
+      <Expression xsi:type="Condition">
+        <Name>AcceptedTriggers</Name>
+        <Description>Send only accepted scheduler decisions to the Arduino.</Description>
+        <Workflow>
+          <Nodes>
+            <Expression xsi:type="WorkflowInput"><Name>Source1</Name></Expression>
+            <Expression xsi:type="MemberSelector"><Selector>Trigger</Selector></Expression>
+            <Expression xsi:type="WorkflowOutput" />
+          </Nodes>
+          <Edges><Edge From="0" To="1" Label="Source1" /><Edge From="1" To="2" Label="Source1" /></Edges>
+        </Workflow>
+      </Expression>
+      <Expression xsi:type="ExternalizedMapping"><Property Name="PortName" DisplayName="ArduinoPort" Description="Arduino serial port." /></Expression>
+      <Expression xsi:type="ExternalizedMapping"><Property Name="BaudRate" DisplayName="ArduinoBaudRate" Description="Arduino serial baud rate." /></Expression>
+      <Expression xsi:type="IncludeWorkflow" Path="../components/arduino_trigger.bonsai" />
+      <Expression xsi:type="s:ExpressionTransform"><s:Name>ArduinoMessage</s:Name><s:Expression>&quot;[playback] ARDUINO event=&quot; + it</s:Expression></Expression>
+      <Expression xsi:type="Combinator"><Combinator xsi:type="io:WriteLine" /></Expression>
+    </Nodes>
+    <Edges>
+      <Edge From="0" To="19" Label="Source1" /><Edge From="1" To="19" Label="Source1" />
+      <Edge From="2" To="19" Label="Source1" /><Edge From="3" To="19" Label="Source1" />
+      <Edge From="4" To="19" Label="Source1" /><Edge From="5" To="19" Label="Source1" />
+      <Edge From="6" To="19" Label="Source1" /><Edge From="7" To="19" Label="Source1" />
+      <Edge From="8" To="19" Label="Source1" /><Edge From="9" To="19" Label="Source1" />
+      <Edge From="10" To="19" Label="Source1" /><Edge From="11" To="19" Label="Source1" />
+      <Edge From="12" To="19" Label="Source1" /><Edge From="13" To="19" Label="Source1" />
+      <Edge From="14" To="19" Label="Source1" /><Edge From="15" To="19" Label="Source1" />
+      <Edge From="16" To="19" Label="Source1" /><Edge From="17" To="19" Label="Source1" />
+      <Edge From="18" To="19" Label="Source1" />
+
+      <Edge From="19" To="30" Label="Source1" />
+      <Edge From="19" To="21" Label="Source1" /><Edge From="20" To="21" Label="Source1" /><Edge From="21" To="30" Label="Source2" />
+      <Edge From="19" To="23" Label="Source1" /><Edge From="22" To="23" Label="Source1" /><Edge From="23" To="30" Label="Source3" />
+      <Edge From="19" To="25" Label="Source1" /><Edge From="24" To="25" Label="Source1" /><Edge From="25" To="30" Label="Source4" />
+      <Edge From="19" To="27" Label="Source1" /><Edge From="26" To="27" Label="Source1" /><Edge From="27" To="30" Label="Source5" />
+      <Edge From="19" To="29" Label="Source1" /><Edge From="28" To="29" Label="Source1" /><Edge From="29" To="30" Label="Source6" />
+
+      <Edge From="30" To="31" Label="Source1" /><Edge From="31" To="32" Label="Source1" />
+      <Edge From="32" To="33" Label="Source1" />
+      <Edge From="30" To="34" Label="Source1" /><Edge From="34" To="37" Label="Source1" />
+      <Edge From="35" To="37" Label="Source1" /><Edge From="36" To="37" Label="Source1" />
+      <Edge From="37" To="38" Label="Source1" /><Edge From="38" To="39" Label="Source1" />
+    </Edges>
+  </Workflow>
+</WorkflowBuilder>

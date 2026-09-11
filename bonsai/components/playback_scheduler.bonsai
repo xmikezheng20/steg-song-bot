@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WorkflowBuilder Version="2.9.1"
+                 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                 xmlns:rx="clr-namespace:Bonsai.Reactive;assembly=Bonsai.Core"
+                 xmlns:s="clr-namespace:Bonsai.Scripting.Expressions;assembly=Bonsai.Scripting.Expressions"
+                 xmlns="https://bonsai-rx.org/2018/workflow">
+  <Workflow>
+    <Nodes>
+      <Expression xsi:type="WorkflowInput">
+        <Name>Source1</Name>
+      </Expression>
+      <Expression xsi:type="WorkflowInput"><Name>Source2</Name></Expression>
+      <Expression xsi:type="WorkflowInput"><Name>Source3</Name></Expression>
+      <Expression xsi:type="WorkflowInput"><Name>Source4</Name></Expression>
+      <Expression xsi:type="WorkflowInput"><Name>Source5</Name></Expression>
+      <Expression xsi:type="WorkflowInput"><Name>Source6</Name></Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="rx:Zip" />
+      </Expression>
+      <Expression xsi:type="s:ExpressionTransform">
+        <s:Name>Settings</s:Name>
+        <s:Expression>new(
+  Item1 as Detection,
+  Item2 as PassiveIntervalBlocks,
+  Item3 as SongTriggerDelayBlocks,
+  Item4 as SongTriggerProbability,
+  Item5 as TriggerLockoutBlocks)</s:Expression>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="rx:Range">
+          <rx:Start>0</rx:Start>
+          <rx:Count>1</rx:Count>
+        </Combinator>
+      </Expression>
+      <Expression xsi:type="Combinator">
+        <Combinator xsi:type="rx:Zip" />
+      </Expression>
+      <Expression xsi:type="s:ExpressionTransform">
+        <s:Name>InitialState</s:Name>
+        <s:Expression>new(
+  Int64(-1) as BlockIndex,
+  Int64(-1) as NextPassiveBlock,
+  Int64(-1) as LastTriggerBlock,
+  Int64(-1) as PendingSongBlock,
+  Int64(0) as PendingCandidateId,
+  Int64(-1) as PendingCompletionBlock,
+  Item2 as RngState,
+  false as SongDue,
+  false as PassiveDue,
+  false as Trigger,
+  &quot;&quot; as TriggerSource,
+  &quot;&quot; as Reason,
+  Int64(0) as CandidateId,
+  Int64(-1) as CompletionBlock,
+  -1.0 as Draw,
+  0.0 as Probability,
+  Int64(-1) as BlocksSinceLastTrigger)</s:Expression>
+      </Expression>
+      <Expression xsi:type="rx:Scan">
+        <Name>SchedulePlayback</Name>
+        <Description>Schedule delayed song and fixed passive attempts, then apply one trigger lockout.</Description>
+        <Workflow>
+          <Nodes>
+            <Expression xsi:type="WorkflowInput">
+              <Name>Source1</Name>
+            </Expression>
+            <Expression xsi:type="s:ExpressionTransform">
+              <s:Name>FindAttempts</s:Name>
+              <s:Expression>new(
+  Accumulation as Previous,
+  Value as Input,
+  Value.Detection.BlockIndex as Index,
+  (Accumulation.NextPassiveBlock &lt; 0 ? Value.PassiveIntervalBlocks - 1 : Accumulation.NextPassiveBlock) as PassiveBlock,
+  (Accumulation.PendingSongBlock &gt;= 0 &amp;&amp; Value.Detection.BlockIndex &gt;= Accumulation.PendingSongBlock) as SongDue,
+  (Value.Detection.BlockIndex &gt;= (Accumulation.NextPassiveBlock &lt; 0 ? Value.PassiveIntervalBlocks - 1 : Accumulation.NextPassiveBlock)) as PassiveDue,
+  (Accumulation.LastTriggerBlock &gt;= 0 &amp;&amp; Value.Detection.BlockIndex - Accumulation.LastTriggerBlock &lt; Value.TriggerLockoutBlocks) as Locked,
+  Accumulation.RngState as CurrentRng)</s:Expression>
+            </Expression>
+            <Expression xsi:type="s:ExpressionTransform">
+              <s:Name>DrawProbability</s:Name>
+              <s:Expression>new(
+  Previous as Previous,
+  Input as Input,
+  Index as Index,
+  PassiveBlock as PassiveBlock,
+  SongDue as SongDue,
+  PassiveDue as PassiveDue,
+  Locked as Locked,
+  CurrentRng as CurrentRng,
+  (SongDue &amp;&amp; !Locked) as DrawNeeded,
+  ((CurrentRng * Int64(1103515245) + Int64(12345)) % Int64(2147483648)) as NextRng,
+  (SongDue &amp;&amp; !Locked ? ((CurrentRng * Int64(1103515245) + Int64(12345)) % Int64(2147483648)) / 2147483648.0 : -1.0) as Draw)</s:Expression>
+            </Expression>
+            <Expression xsi:type="s:ExpressionTransform">
+              <s:Name>Decide</s:Name>
+              <s:Expression>new(
+  Previous as Previous,
+  Input as Input,
+  Index as Index,
+  PassiveBlock as PassiveBlock,
+  SongDue as SongDue,
+  PassiveDue as PassiveDue,
+  Locked as Locked,
+  CurrentRng as CurrentRng,
+  DrawNeeded as DrawNeeded,
+  NextRng as NextRng,
+  Draw as Draw,
+  ((SongDue &amp;&amp; !Locked &amp;&amp; Draw &lt; Input.SongTriggerProbability) || (!Locked &amp;&amp; PassiveDue)) as Trigger,
+  (SongDue &amp;&amp; !Locked &amp;&amp; Draw &lt; Input.SongTriggerProbability ? &quot;song&quot; : (!Locked &amp;&amp; PassiveDue ? &quot;passive&quot; : &quot;&quot;)) as TriggerSource,
+  (Locked ? &quot;lockout&quot; : (SongDue &amp;&amp; Draw &gt;= Input.SongTriggerProbability ? &quot;probability&quot; : &quot;&quot;)) as Reason)</s:Expression>
+            </Expression>
+            <Expression xsi:type="s:ExpressionTransform">
+              <s:Name>Advance</s:Name>
+              <s:Expression>new(
+  Index as BlockIndex,
+  (PassiveDue ? PassiveBlock + Input.PassiveIntervalBlocks : PassiveBlock) as NextPassiveBlock,
+  (Trigger ? Index : Previous.LastTriggerBlock) as LastTriggerBlock,
+  (Input.Detection.Event == &quot;completed&quot; &amp;&amp; Input.Detection.Confirmed ? Index + Input.SongTriggerDelayBlocks : (SongDue ? Int64(-1) : Previous.PendingSongBlock)) as PendingSongBlock,
+  (Input.Detection.Event == &quot;completed&quot; &amp;&amp; Input.Detection.Confirmed ? Input.Detection.CandidateId : (SongDue ? Int64(0) : Previous.PendingCandidateId)) as PendingCandidateId,
+  (Input.Detection.Event == &quot;completed&quot; &amp;&amp; Input.Detection.Confirmed ? Index : (SongDue ? Int64(-1) : Previous.PendingCompletionBlock)) as PendingCompletionBlock,
+  (DrawNeeded ? NextRng : CurrentRng) as RngState,
+  SongDue as SongDue,
+  PassiveDue as PassiveDue,
+  Trigger as Trigger,
+  TriggerSource as TriggerSource,
+  Reason as Reason,
+  (SongDue ? Previous.PendingCandidateId : Int64(0)) as CandidateId,
+  (SongDue ? Previous.PendingCompletionBlock : Int64(-1)) as CompletionBlock,
+  Draw as Draw,
+  Input.SongTriggerProbability as Probability,
+  (Previous.LastTriggerBlock &gt;= 0 ? Index - Previous.LastTriggerBlock : Int64(-1)) as BlocksSinceLastTrigger)</s:Expression>
+            </Expression>
+            <Expression xsi:type="WorkflowOutput" />
+          </Nodes>
+          <Edges>
+            <Edge From="0" To="1" Label="Source1" />
+            <Edge From="1" To="2" Label="Source1" />
+            <Edge From="2" To="3" Label="Source1" />
+            <Edge From="3" To="4" Label="Source1" />
+            <Edge From="4" To="5" Label="Source1" />
+          </Edges>
+        </Workflow>
+      </Expression>
+      <Expression xsi:type="WorkflowOutput" />
+    </Nodes>
+    <Edges>
+      <Edge From="0" To="6" Label="Source1" />
+      <Edge From="1" To="6" Label="Source2" />
+      <Edge From="2" To="6" Label="Source3" />
+      <Edge From="3" To="6" Label="Source4" />
+      <Edge From="4" To="6" Label="Source5" />
+      <Edge From="6" To="7" Label="Source1" />
+      <Edge From="7" To="11" Label="Source1" />
+      <Edge From="8" To="9" Label="Source1" />
+      <Edge From="5" To="9" Label="Source2" />
+      <Edge From="9" To="10" Label="Source1" />
+      <Edge From="10" To="11" Label="Source2" />
+      <Edge From="11" To="12" Label="Source1" />
+    </Edges>
+  </Workflow>
+</WorkflowBuilder>

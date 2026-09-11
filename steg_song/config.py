@@ -133,6 +133,36 @@ class PassivePlaybackRun:
         }
 
 
+@dataclass(frozen=True)
+class CombinedPlaybackRun(SongDetectionRun):
+    serial_port: str
+    serial_baud_rate: int
+    passive_interval_seconds: int
+    song_trigger_delay_ms: int
+    song_trigger_probability: float
+    trigger_lockout_seconds: int
+    passive_interval_blocks: int
+    song_trigger_delay_blocks: int
+    trigger_lockout_blocks: int
+
+    def as_dict(self) -> dict[str, Any]:
+        result = super().as_dict()
+        result["arduino_trigger"] = {
+            "port": self.serial_port,
+            "baud_rate": self.serial_baud_rate,
+        }
+        result["playback"] = {
+            "passive_interval_seconds": self.passive_interval_seconds,
+            "passive_interval_blocks": self.passive_interval_blocks,
+            "song_trigger_delay_ms": self.song_trigger_delay_ms,
+            "song_trigger_delay_blocks": self.song_trigger_delay_blocks,
+            "song_trigger_probability": self.song_trigger_probability,
+            "trigger_lockout_seconds": self.trigger_lockout_seconds,
+            "trigger_lockout_blocks": self.trigger_lockout_blocks,
+        }
+        return result
+
+
 def load_run(
     repo_root: Path,
     rig_path: Path,
@@ -151,6 +181,10 @@ def load_run(
         if profile_name is not None:
             raise ConfigError("passive_playback does not use a profile")
         return load_passive_playback_run(repo_root, rig_path)
+    if protocol_name == "combined_playback":
+        return load_combined_playback_run(
+            repo_root, rig_path, profile_name or "standard"
+        )
     raise ConfigError(f"Unknown protocol: {protocol_name!r}")
 
 
@@ -193,10 +227,73 @@ def load_recording_run(
 def load_song_detection_run(
     repo_root: Path, rig_path: Path, profile_name: str
 ) -> SongDetectionRun:
+    settings, _ = _load_song_detection_settings(
+        repo_root, rig_path, "song_detection", profile_name
+    )
+    return SongDetectionRun(**settings)
+
+
+def load_combined_playback_run(
+    repo_root: Path, rig_path: Path, profile_name: str
+) -> CombinedPlaybackRun:
+    settings, protocol = _load_song_detection_settings(
+        repo_root, rig_path, "combined_playback", profile_name
+    )
+    rig = _read_toml(rig_path)
+    serial_port = _required(rig, "arduino_trigger", "port", str).strip()
+    if not serial_port:
+        raise ConfigError("arduino_trigger.port cannot be empty")
+
+    buffer_ms = settings["buffer_ms"]
+    passive_interval_seconds = _positive_int(
+        protocol, "playback", "passive_interval_seconds"
+    )
+    song_trigger_delay_ms = _positive_int(
+        protocol, "playback", "song_trigger_delay_ms"
+    )
+    trigger_lockout_seconds = _positive_int(
+        protocol, "playback", "trigger_lockout_seconds"
+    )
+    return CombinedPlaybackRun(
+        **settings,
+        serial_port=serial_port,
+        serial_baud_rate=_positive_int(
+            rig, "arduino_trigger", "baud_rate"
+        ),
+        passive_interval_seconds=passive_interval_seconds,
+        song_trigger_delay_ms=song_trigger_delay_ms,
+        song_trigger_probability=_probability(
+            protocol, "playback", "song_trigger_probability"
+        ),
+        trigger_lockout_seconds=trigger_lockout_seconds,
+        passive_interval_blocks=_milliseconds_to_blocks(
+            passive_interval_seconds * 1000,
+            buffer_ms,
+            "playback.passive_interval_seconds",
+        ),
+        song_trigger_delay_blocks=_milliseconds_to_blocks(
+            song_trigger_delay_ms,
+            buffer_ms,
+            "playback.song_trigger_delay_ms",
+        ),
+        trigger_lockout_blocks=_milliseconds_to_blocks(
+            trigger_lockout_seconds * 1000,
+            buffer_ms,
+            "playback.trigger_lockout_seconds",
+        ),
+    )
+
+
+def _load_song_detection_settings(
+    repo_root: Path,
+    rig_path: Path,
+    protocol_name: str,
+    profile_name: str,
+) -> tuple[dict[str, Any], dict[str, Any]]:
     if profile_name not in {"debug", "standard"}:
-        raise ConfigError(f"Unknown song-detection profile: {profile_name!r}")
+        raise ConfigError(f"Unknown {protocol_name} profile: {profile_name!r}")
     protocol = _read_toml(
-        repo_root / "protocols" / f"song_detection.{profile_name}.toml"
+        repo_root / "protocols" / f"{protocol_name}.{profile_name}.toml"
     )
     declared_profile = _required(protocol, "protocol", "profile", str)
     if declared_profile != profile_name:
@@ -204,7 +301,7 @@ def load_song_detection_run(
             f"Profile file {profile_name!r} declares {declared_profile!r}"
         )
     base = _load_common_settings(
-        repo_root, rig_path, "song_detection", protocol
+        repo_root, rig_path, protocol_name, protocol
     )
     if base.sample_format != "Mono16":
         raise ConfigError("song detection requires audio_input.sample_format = \"Mono16\"")
@@ -236,27 +333,28 @@ def load_song_detection_run(
     split_minutes, blocks_per_wav = _recording_settings(
         protocol, base.buffer_ms, section="output"
     )
-    return SongDetectionRun(
+    settings = {
         **base.__dict__,
-        wav_split_minutes=split_minutes,
-        blocks_per_wav=blocks_per_wav,
-        profile_name=profile_name,
-        save_raw_audio=_required(
+        "wav_split_minutes": split_minutes,
+        "blocks_per_wav": blocks_per_wav,
+        "profile_name": profile_name,
+        "save_raw_audio": _required(
             protocol, "output", "save_raw_audio", bool
         ),
-        save_block_csv=_required(
+        "save_block_csv": _required(
             protocol, "output", "save_block_csv", bool
         ),
-        high_pass_hz=high_pass_hz,
-        high_pass_kernel_length=kernel_length,
-        rms_threshold=threshold,
-        minimum_span_ms=minimum_span_ms,
-        minimum_occupancy=occupancy,
-        end_silence_ms=end_silence_ms,
-        minimum_span_blocks=minimum_span_ms // base.buffer_ms,
-        end_silence_blocks=end_silence_ms // base.buffer_ms,
-        rms_divisor=math.sqrt(base.samples_per_block),
-    )
+        "high_pass_hz": high_pass_hz,
+        "high_pass_kernel_length": kernel_length,
+        "rms_threshold": threshold,
+        "minimum_span_ms": minimum_span_ms,
+        "minimum_occupancy": occupancy,
+        "end_silence_ms": end_silence_ms,
+        "minimum_span_blocks": minimum_span_ms // base.buffer_ms,
+        "end_silence_blocks": end_silence_ms // base.buffer_ms,
+        "rms_divisor": math.sqrt(base.samples_per_block),
+    }
+    return settings, protocol
 
 
 def validate_session_id(value: str) -> str:
@@ -394,3 +492,24 @@ def _positive_number(data: dict[str, Any], section: str, key: str) -> float:
     if not math.isfinite(value) or value <= 0:
         raise ConfigError(f"{section}.{key} must be finite and positive")
     return value
+
+
+def _probability(data: dict[str, Any], section: str, key: str) -> float:
+    try:
+        value = data[section][key]
+    except (KeyError, TypeError) as error:
+        raise ConfigError(f"Missing required setting: {section}.{key}") from error
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ConfigError(f"{section}.{key} must be a number")
+    value = float(value)
+    if not math.isfinite(value) or not 0 <= value <= 1:
+        raise ConfigError(f"{section}.{key} must be between 0 and 1")
+    return value
+
+
+def _milliseconds_to_blocks(
+    milliseconds: int, buffer_ms: int, setting_name: str
+) -> int:
+    if milliseconds % buffer_ms:
+        raise ConfigError(f"{setting_name} must contain whole acquisition blocks")
+    return milliseconds // buffer_ms

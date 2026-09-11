@@ -6,9 +6,11 @@ import unittest
 import xml.etree.ElementTree as ElementTree
 
 from steg_song.config import (
+    CombinedPlaybackRun,
     ConfigError,
     PassivePlaybackRun,
     SongDetectionRun,
+    load_combined_playback_run,
     load_passive_playback_run,
     load_recording_run,
     load_run,
@@ -28,7 +30,52 @@ WORKFLOW_NAMESPACE = "https://bonsai-rx.org/2018/workflow"
 XSI_TYPE = "{http://www.w3.org/2001/XMLSchema-instance}type"
 
 
-class RecordingConfigTests(unittest.TestCase):
+class ConfigTests(unittest.TestCase):
+    def test_combined_playback_resolves_one_scheduler(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            bonsai = root / "Bonsai.exe"
+            bonsai.touch()
+            rig = root / "rig.toml"
+            rig.write_text(
+                f'''[bonsai]
+executable = "{bonsai.as_posix()}"
+[audio_input]
+device_name = "AudioMoth"
+sample_rate_hz = 250000
+sample_format = "Mono16"
+gain = "medium"
+low_gain_mode = true
+switch_position = "CUSTOM"
+[arduino_trigger]
+port = "COM3"
+baud_rate = 9600
+[storage]
+session_root = "{(root / 'sessions').as_posix()}"
+''',
+                encoding="utf-8",
+            )
+
+            run = load_combined_playback_run(REPO_ROOT, rig, "standard")
+
+            self.assertIsInstance(run, CombinedPlaybackRun)
+            self.assertEqual(run.passive_interval_blocks, 12000)
+            self.assertEqual(run.song_trigger_delay_blocks, 5)
+            self.assertEqual(run.song_trigger_probability, 0.8)
+            self.assertEqual(run.trigger_lockout_blocks, 1200)
+            command = " ".join(
+                _bonsai_command(
+                    run, root / "run", headless=True, random_seed=12345
+                )
+            )
+            self.assertIn("PassiveIntervalBlocks=12000", command)
+            self.assertIn("SongTriggerDelayBlocks=5", command)
+            self.assertIn("SongTriggerProbability=0.8", command)
+            self.assertIn("TriggerLockoutBlocks=1200", command)
+            self.assertIn("SchedulerRandomSeed=12345", command)
+            self.assertIn("ArduinoPort=COM3", command)
+            self.assertIn("AudioDevice=AudioMoth", command)
+
     def test_passive_playback_uses_only_trigger_hardware(self) -> None:
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
