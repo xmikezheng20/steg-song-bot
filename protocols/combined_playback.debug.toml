@@ -13,7 +13,7 @@ high_pass_kernel_length = 60
 [song_detection]
 rms_threshold = 0.01
 minimum_span_ms = 1500
-minimum_occupancy = 0.20
+minimum_occupancy = 0.25
 end_silence_ms = 250
 
 [playback]
