@@ -24,7 +24,9 @@
   Item2 as PassiveIntervalBlocks,
   Item3 as SongTriggerDelayBlocks,
   Item4 as SongTriggerProbability,
-  Item5 as TriggerLockoutBlocks)</s:Expression>
+  Item5 as TriggerLockoutBlocks,
+  Item6 as EnableSongTriggered,
+  Item7 as EnablePassive)</s:Expression>
       </Expression>
       <Expression xsi:type="Combinator">
         <Combinator xsi:type="rx:Range">
@@ -70,9 +72,9 @@
   Accumulation as Previous,
   Value as Input,
   Value.Detection.BlockIndex as Index,
-  (Accumulation.NextPassiveBlock &lt; 0 ? Value.PassiveIntervalBlocks - 1 : Accumulation.NextPassiveBlock) as PassiveBlock,
-  (Accumulation.PendingSongBlock &gt;= 0 &amp;&amp; Value.Detection.BlockIndex &gt;= Accumulation.PendingSongBlock) as SongDue,
-  (Value.Detection.BlockIndex &gt;= (Accumulation.NextPassiveBlock &lt; 0 ? Value.PassiveIntervalBlocks - 1 : Accumulation.NextPassiveBlock)) as PassiveDue,
+  (Value.EnablePassive ? (Accumulation.NextPassiveBlock &lt; 0 ? Value.PassiveIntervalBlocks - 1 : Accumulation.NextPassiveBlock) : Int64(-1)) as PassiveBlock,
+  (Value.EnableSongTriggered &amp;&amp; Accumulation.PendingSongBlock &gt;= 0 &amp;&amp; Value.Detection.BlockIndex &gt;= Accumulation.PendingSongBlock) as SongDue,
+  (Value.EnablePassive &amp;&amp; Value.Detection.BlockIndex &gt;= (Accumulation.NextPassiveBlock &lt; 0 ? Value.PassiveIntervalBlocks - 1 : Accumulation.NextPassiveBlock)) as PassiveDue,
   (Accumulation.LastTriggerBlock &gt;= 0 &amp;&amp; Value.Detection.BlockIndex - Accumulation.LastTriggerBlock &lt; Value.TriggerLockoutBlocks) as Locked,
   Accumulation.RngState as CurrentRng)</s:Expression>
             </Expression>
@@ -115,9 +117,9 @@
   Index as BlockIndex,
   (PassiveDue ? PassiveBlock + Input.PassiveIntervalBlocks : PassiveBlock) as NextPassiveBlock,
   (Trigger ? Index : Previous.LastTriggerBlock) as LastTriggerBlock,
-  (Input.Detection.Event == &quot;completed&quot; &amp;&amp; Input.Detection.Confirmed ? Index + Input.SongTriggerDelayBlocks : (SongDue ? Int64(-1) : Previous.PendingSongBlock)) as PendingSongBlock,
-  (Input.Detection.Event == &quot;completed&quot; &amp;&amp; Input.Detection.Confirmed ? Input.Detection.CandidateId : (SongDue ? Int64(0) : Previous.PendingCandidateId)) as PendingCandidateId,
-  (Input.Detection.Event == &quot;completed&quot; &amp;&amp; Input.Detection.Confirmed ? Index : (SongDue ? Int64(-1) : Previous.PendingCompletionBlock)) as PendingCompletionBlock,
+  (Input.EnableSongTriggered &amp;&amp; Input.Detection.Event == &quot;completed&quot; &amp;&amp; Input.Detection.Confirmed ? Index + Input.SongTriggerDelayBlocks : (SongDue ? Int64(-1) : Previous.PendingSongBlock)) as PendingSongBlock,
+  (Input.EnableSongTriggered &amp;&amp; Input.Detection.Event == &quot;completed&quot; &amp;&amp; Input.Detection.Confirmed ? Input.Detection.CandidateId : (SongDue ? Int64(0) : Previous.PendingCandidateId)) as PendingCandidateId,
+  (Input.EnableSongTriggered &amp;&amp; Input.Detection.Event == &quot;completed&quot; &amp;&amp; Input.Detection.Confirmed ? Index : (SongDue ? Int64(-1) : Previous.PendingCompletionBlock)) as PendingCompletionBlock,
   (DrawNeeded ? NextRng : CurrentRng) as RngState,
   SongDue as SongDue,
   PassiveDue as PassiveDue,
@@ -142,6 +144,8 @@
         </Workflow>
       </Expression>
       <Expression xsi:type="WorkflowOutput" />
+      <Expression xsi:type="WorkflowInput"><Name>Source7</Name></Expression>
+      <Expression xsi:type="WorkflowInput"><Name>Source8</Name></Expression>
     </Nodes>
     <Edges>
       <Edge From="0" To="6" Label="Source1" />
@@ -149,6 +153,8 @@
       <Edge From="2" To="6" Label="Source3" />
       <Edge From="3" To="6" Label="Source4" />
       <Edge From="4" To="6" Label="Source5" />
+      <Edge From="13" To="6" Label="Source6" />
+      <Edge From="14" To="6" Label="Source7" />
       <Edge From="6" To="7" Label="Source1" />
       <Edge From="7" To="11" Label="Source1" />
       <Edge From="8" To="9" Label="Source1" />

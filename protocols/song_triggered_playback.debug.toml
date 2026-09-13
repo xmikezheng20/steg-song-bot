@@ -1,5 +1,5 @@
 [protocol]
-name = "combined_playback"
+name = "song_triggered_playback"
 profile = "debug"
 workflow = "bonsai/protocols/combined_playback.bonsai"
 
@@ -18,7 +18,7 @@ end_silence_ms = 250
 
 [playback]
 enable_song_triggered = true
-enable_passive = true
+enable_passive = false
 passive_interval_seconds = 120
 song_trigger_delay_ms = 50
 song_trigger_probability = 0.60

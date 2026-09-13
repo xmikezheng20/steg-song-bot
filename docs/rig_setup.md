@@ -22,6 +22,14 @@ Before each run:
    experiment notes.
 5. Run the protocol configuration check before starting Bonsai.
 
+Set the absolute repository location once in `rig.local.toml`. Portable protocol
+configs use it to resolve their relative Bonsai workflow paths:
+
+```toml
+[steg_song]
+repo_root = "C:/Users/xizheng/Projects/steg-song-bot"
+```
+
 For playback, set the Nano serial connection in `rig.local.toml`:
 
 ```toml

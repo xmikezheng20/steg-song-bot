@@ -36,9 +36,17 @@ class ConfigTests(unittest.TestCase):
             root = Path(folder)
             bonsai = root / "Bonsai.exe"
             bonsai.touch()
+            protocol = root / "outside-repo.toml"
+            protocol.write_text(
+                (REPO_ROOT / "protocols" / "combined_playback.standard.toml")
+                .read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
             rig = root / "rig.toml"
             rig.write_text(
-                f'''[bonsai]
+                f'''[steg_song]
+repo_root = "{REPO_ROOT.as_posix()}"
+[bonsai]
 executable = "{bonsai.as_posix()}"
 [audio_input]
 device_name = "AudioMoth"
@@ -56,12 +64,19 @@ session_root = "{(root / 'sessions').as_posix()}"
                 encoding="utf-8",
             )
 
-            run = load_combined_playback_run(REPO_ROOT, rig, "standard")
+            run = load_run(rig, protocol)
 
             self.assertIsInstance(run, CombinedPlaybackRun)
+            self.assertEqual(run.protocol_config, protocol.resolve())
+            self.assertEqual(
+                run.workflow,
+                (REPO_ROOT / "bonsai/protocols/combined_playback.bonsai").resolve(),
+            )
+            self.assertTrue(run.enable_song_triggered)
+            self.assertTrue(run.enable_passive)
             self.assertEqual(run.passive_interval_blocks, 12000)
             self.assertEqual(run.song_trigger_delay_blocks, 5)
-            self.assertEqual(run.song_trigger_probability, 0.8)
+            self.assertEqual(run.song_trigger_probability, 0.6)
             self.assertEqual(run.trigger_lockout_blocks, 1200)
             command = " ".join(
                 _bonsai_command(
@@ -70,11 +85,77 @@ session_root = "{(root / 'sessions').as_posix()}"
             )
             self.assertIn("PassiveIntervalBlocks=12000", command)
             self.assertIn("SongTriggerDelayBlocks=5", command)
-            self.assertIn("SongTriggerProbability=0.8", command)
+            self.assertIn("SongTriggerProbability=0.6", command)
             self.assertIn("TriggerLockoutBlocks=1200", command)
             self.assertIn("SchedulerRandomSeed=12345", command)
+            self.assertIn("EnableSongTriggered=true", command)
+            self.assertIn("EnablePassive=true", command)
             self.assertIn("ArduinoPort=COM3", command)
             self.assertIn("AudioDevice=AudioMoth", command)
+
+    def test_song_triggered_playback_reuses_workflow_without_passive(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            bonsai = root / "Bonsai.exe"
+            bonsai.touch()
+            rig = root / "rig.toml"
+            rig.write_text(
+                f'''[steg_song]
+repo_root = "{REPO_ROOT.as_posix()}"
+[bonsai]
+executable = "{bonsai.as_posix()}"
+[audio_input]
+device_name = "AudioMoth"
+sample_rate_hz = 250000
+sample_format = "Mono16"
+gain = "medium"
+low_gain_mode = true
+switch_position = "CUSTOM"
+[arduino_trigger]
+port = "COM3"
+baud_rate = 9600
+[storage]
+session_root = "{(root / 'sessions').as_posix()}"
+''',
+                encoding="utf-8",
+            )
+
+            run = load_combined_playback_run(
+                rig,
+                REPO_ROOT
+                / "protocols/song_triggered_playback.standard.toml",
+            )
+
+            self.assertEqual(run.protocol_name, "song_triggered_playback")
+            self.assertTrue(run.enable_song_triggered)
+            self.assertFalse(run.enable_passive)
+            self.assertEqual(
+                run.workflow,
+                (REPO_ROOT / "bonsai/protocols/combined_playback.bonsai").resolve(),
+            )
+            command = " ".join(
+                _bonsai_command(
+                    run, root / "run", headless=True, random_seed=12345
+                )
+            )
+            self.assertIn("EnableSongTriggered=true", command)
+            self.assertIn("EnablePassive=false", command)
+
+            disabled = root / "all-disabled.toml"
+            disabled.write_text(
+                (
+                    REPO_ROOT
+                    / "protocols/song_triggered_playback.standard.toml"
+                )
+                .read_text(encoding="utf-8")
+                .replace(
+                    "enable_song_triggered = true",
+                    "enable_song_triggered = false",
+                ),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ConfigError, "must enable"):
+                load_run(rig, disabled)
 
     def test_passive_playback_uses_only_trigger_hardware(self) -> None:
         with tempfile.TemporaryDirectory() as folder:
@@ -83,7 +164,9 @@ session_root = "{(root / 'sessions').as_posix()}"
             bonsai.touch()
             rig = root / "rig.toml"
             rig.write_text(
-                f'''[bonsai]
+                f'''[steg_song]
+repo_root = "{REPO_ROOT.as_posix()}"
+[bonsai]
 executable = "{bonsai.as_posix()}"
 [arduino_trigger]
 port = "COM3"
@@ -94,7 +177,9 @@ session_root = "{(root / 'sessions').as_posix()}"
                 encoding="utf-8",
             )
 
-            run = load_passive_playback_run(REPO_ROOT, rig)
+            run = load_passive_playback_run(
+                rig, REPO_ROOT / "protocols/passive_playback.toml"
+            )
 
             self.assertIsInstance(run, PassivePlaybackRun)
             self.assertEqual(run.serial_port, "COM3")
@@ -138,7 +223,9 @@ session_root = "{(root / 'sessions').as_posix()}"
             bonsai.touch()
             rig = root / "rig.toml"
             rig.write_text(
-                f'''[bonsai]
+                f'''[steg_song]
+repo_root = "{REPO_ROOT.as_posix()}"
+[bonsai]
 executable = "{bonsai.as_posix()}"
 [audio_input]
 device_name = "AudioMoth"
@@ -153,7 +240,9 @@ session_root = "{(root / 'sessions').as_posix()}"
                 encoding="utf-8",
             )
 
-            run = load_recording_run(REPO_ROOT, rig, "recording")
+            run = load_recording_run(
+                rig, REPO_ROOT / "protocols/recording.toml"
+            )
 
             self.assertEqual(run.samples_per_block, 2500)
             self.assertEqual(run.blocks_per_wav, 360000)
@@ -199,7 +288,9 @@ session_root = "{(root / 'sessions').as_posix()}"
             bonsai.touch()
             rig = root / "rig.toml"
             rig.write_text(
-                f'''[bonsai]
+                f'''[steg_song]
+repo_root = "{REPO_ROOT.as_posix()}"
+[bonsai]
 executable = "{bonsai.as_posix()}"
 [audio_input]
 device_name = "AudioMoth"
@@ -214,8 +305,12 @@ session_root = "{(root / 'sessions').as_posix()}"
                 encoding="utf-8",
             )
 
-            debug = load_song_detection_run(REPO_ROOT, rig, "debug")
-            standard = load_song_detection_run(REPO_ROOT, rig, "standard")
+            debug = load_song_detection_run(
+                rig, REPO_ROOT / "protocols/song_detection.debug.toml"
+            )
+            standard = load_song_detection_run(
+                rig, REPO_ROOT / "protocols/song_detection.standard.toml"
+            )
 
             self.assertIsInstance(debug, SongDetectionRun)
             self.assertIsInstance(standard, SongDetectionRun)
@@ -247,10 +342,6 @@ session_root = "{(root / 'sessions').as_posix()}"
             self.assertIn("SaveBlockCsv=true", debug_command)
             self.assertIn("SaveRawAudio=false", standard_command)
             self.assertIn("SaveBlockCsv=false", standard_command)
-
-            default = load_run(REPO_ROOT, rig, "song_detection")
-            self.assertIsInstance(default, SongDetectionRun)
-            self.assertEqual(default.profile_name, "standard")
 
             output = root / "standard"
             output.mkdir()

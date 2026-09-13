@@ -1,5 +1,8 @@
 # Copy this file to rig.local.toml and edit it for one rig computer.
 
+[steg_song]
+repo_root = "C:/Users/USER/Projects/steg-song-bot"
+
 [bonsai]
 executable = "C:/Users/USER/AppData/Local/Bonsai/Bonsai.exe"
 

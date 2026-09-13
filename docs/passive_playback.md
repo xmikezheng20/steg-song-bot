@@ -22,18 +22,18 @@ Confirm the resolved settings:
 
 ```powershell
 conda activate audiomoth
-python -m steg_song check passive_playback --rig config/rig.local.toml
+python -m steg_song check --config protocols/passive_playback.toml --rig config/rig.local.toml
 ```
 
 Then start a new session:
 
 ```powershell
-python -m steg_song run passive_playback --rig config/rig.local.toml --session passive-test
+python -m steg_song run --config protocols/passive_playback.toml --rig config/rig.local.toml --session passive-test
 ```
 
-The first trigger occurs after 120 seconds. For a short bench test, temporarily
-set `interval_seconds = 5` in `protocols/passive_playback.toml`, then restore it
-to 120.
+The first trigger occurs after 120 seconds. For a short bench test, copy
+`protocols/passive_playback.toml` outside the repository and set
+`interval_seconds = 5` in that copy.
 
 The command window and `playback_events.csv` report `PORT_OPEN`,
 `TRIGGER_SENT`, `READY`, `START`, `DONE`, or `BUSY`. A normal trigger produces

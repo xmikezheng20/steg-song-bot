@@ -14,13 +14,19 @@ settings. They differ only in diagnostic output:
 | `debug` | yes | yes | yes | yes |
 | `standard` | no | no | yes | yes |
 
+These repository files are templates. A copied TOML can live anywhere and is
+selected directly with `--config`; its workflow is resolved through the
+repository root in `rig.local.toml`.
+
 The scheduler defaults are:
 
 ```toml
 [playback]
+enable_song_triggered = true
+enable_passive = true
 passive_interval_seconds = 120
 song_trigger_delay_ms = 50
-song_trigger_probability = 0.80
+song_trigger_probability = 0.60
 trigger_lockout_seconds = 12
 ```
 
@@ -50,6 +56,13 @@ order:
 Skipped attempts are discarded, not queued. Detection is never paused or
 masked during playback or lockout.
 
+The same workflow supports song-triggered-only playback. Its template sets
+`enable_song_triggered = true` and `enable_passive = false`, so no passive
+attempts are scheduled. Probability applies only to song-triggered attempts.
+Setting the switches the other way runs fixed passive playback while retaining
+audio recording and detection. Disabling both is rejected as a configuration
+error.
+
 ## Audit trail
 
 The launcher creates these files in every session:
@@ -69,7 +82,7 @@ First confirm the AudioMoth and Arduino settings:
 
 ```powershell
 conda activate audiomoth
-python -m steg_song check combined_playback --profile debug --rig config/rig.local.toml
+python -m steg_song check --config protocols/combined_playback.debug.toml --rig config/rig.local.toml
 ```
 
 Then configure Avisoft as for passive playback: external trigger enabled, stop
@@ -77,7 +90,7 @@ after each item enabled, and playlist looping enabled so Avisoft remains ready
 for the next trigger. Start a short debug session:
 
 ```powershell
-python -m steg_song run combined_playback --profile debug --rig config/rig.local.toml --session combined-test-01
+python -m steg_song run --config protocols/combined_playback.debug.toml --rig config/rig.local.toml --session combined-test-01
 ```
 
 During the run, verify passive and song decisions in the command window. After

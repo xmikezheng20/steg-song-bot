@@ -25,6 +25,7 @@ its output.
 
 Copy `config/rig.example.toml` to `config/rig.local.toml` and set:
 
+- the absolute repository root;
 - the Bonsai executable;
 - the exact AudioMoth device name shown by Bonsai;
 - the hardware sample rate and format;
@@ -33,13 +34,24 @@ Copy `config/rig.example.toml` to `config/rig.local.toml` and set:
 `rig.local.toml` is ignored because device names and storage paths are specific
 to one computer.
 
+Protocol TOMLs are portable. Pass one with `--config`; it can live anywhere.
+Its relative workflow path is resolved against `steg_song.repo_root` from the
+rig file. The files under `protocols/` are ready-to-copy templates.
+
+For example:
+
+```powershell
+Copy-Item protocols/combined_playback.debug.toml D:/experiment-configs/mouse-001.toml
+python -m steg_song check --config D:/experiment-configs/mouse-001.toml --rig config/rig.local.toml
+```
+
 ## Check the recording protocol
 
 Python 3.11 or newer is required by the launcher.
 
 ```powershell
 conda activate audiomoth
-python -m steg_song check recording --rig config/rig.local.toml
+python -m steg_song check --config protocols/recording.toml --rig config/rig.local.toml
 ```
 
 This validates the configuration and prints all derived values without opening
@@ -48,7 +60,7 @@ Bonsai or creating a session.
 ## Record
 
 ```powershell
-python -m steg_song run recording --rig config/rig.local.toml --session mouse-001
+python -m steg_song run --config protocols/recording.toml --rig config/rig.local.toml --session mouse-001
 ```
 
 The default opens and starts Bonsai so the incoming signal can be inspected.
@@ -78,8 +90,8 @@ change only how much data is saved:
 Use `debug` while inspecting and tuning the detector:
 
 ```powershell
-python -m steg_song check song_detection --profile debug --rig config/rig.local.toml
-python -m steg_song run song_detection --profile debug --rig config/rig.local.toml --session mouse-001-detection
+python -m steg_song check --config protocols/song_detection.debug.toml --rig config/rig.local.toml
+python -m steg_song run --config protocols/song_detection.debug.toml --rig config/rig.local.toml --session mouse-001-detection
 ```
 
 While Bonsai runs, the same command window prints each confirmed song,
@@ -88,9 +100,8 @@ onset or offset, span and occupancy. `events.csv` remains the complete
 machine-readable record and is written without buffering so it can also be
 read during the experiment.
 
-Once the parameters are settled, use `--profile standard`. Standard is also the
-default when `--profile` is omitted. Both profiles launch
-`bonsai/protocols/song_detection.bonsai`; `save_raw_audio` and
+Once the parameters are settled, select `song_detection.standard.toml`. Both
+files launch `bonsai/protocols/song_detection.bonsai`; `save_raw_audio` and
 `save_block_csv` are the only output gates.
 
 Exact setup, signal processing and state semantics are documented in
@@ -103,8 +114,8 @@ seconds. Avisoft owns the playlist and advances it in response to the hardware
 TRG pulse; playlist paths do not belong in this repository.
 
 ```powershell
-python -m steg_song check passive_playback --rig config/rig.local.toml
-python -m steg_song run passive_playback --rig config/rig.local.toml --session passive-test
+python -m steg_song check --config protocols/passive_playback.toml --rig config/rig.local.toml
+python -m steg_song run --config protocols/passive_playback.toml --rig config/rig.local.toml --session passive-test
 ```
 
 The first trigger occurs after one complete interval. Arduino responses appear
@@ -115,23 +126,28 @@ Firmware, wiring and test instructions are in `docs/passive_playback.md`.
 
 Combined playback keeps song detection running continuously while one scheduler
 handles both trigger sources. Passive attempts stay on a fixed 120-second clock.
-A completed detected song produces an attempt 50 ms later with 80% probability.
+A completed detected song produces an attempt 50 ms later with 60% probability.
 Accepted triggers share a 12-second lockout measured from the previous playback
 start; attempts during that interval are logged and discarded, never queued.
 
 Use the debug profile for initial testing:
 
 ```powershell
-python -m steg_song check combined_playback --profile debug --rig config/rig.local.toml
-python -m steg_song run combined_playback --profile debug --rig config/rig.local.toml --session combined-test
+python -m steg_song check --config protocols/combined_playback.debug.toml --rig config/rig.local.toml
+python -m steg_song run --config protocols/combined_playback.debug.toml --rig config/rig.local.toml --session combined-test
 ```
 
 The command window and `playback_events.csv` show every playback decision and
-Arduino response. Use `--profile standard` after validating the detector; it
-runs the same workflow without saving raw WAV or per-block CSV data. Exact
-scheduler behavior and test instructions are in `docs/combined_playback.md`.
+Arduino response. Select `combined_playback.standard.toml` after validating the
+detector; it runs the same workflow without saving raw WAV or per-block CSV
+data. Exact scheduler behavior and test instructions are in
+`docs/combined_playback.md`.
+
+For song-triggered playback without the passive schedule, select
+`song_triggered_playback.debug.toml` or its standard counterpart. These configs
+use the same combined workflow with `enable_passive = false`.
 
 ## Current scope
 
-Recording, live song detection, fixed-interval passive playback and combined
-passive/song-triggered playback are implemented.
+Recording, live song detection, fixed-interval passive playback, combined
+playback and song-triggered-only playback are implemented.

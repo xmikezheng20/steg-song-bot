@@ -22,18 +22,13 @@ from .config import (
 )
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-
-
 def main(argv: Sequence[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
     try:
         run = load_run(
-            REPO_ROOT,
             args.rig.resolve(),
-            args.protocol,
-            args.profile,
+            args.config.resolve(),
         )
         if args.command == "check":
             print(json.dumps(run.as_dict(), indent=2))
@@ -60,18 +55,10 @@ def _parser() -> argparse.ArgumentParser:
 
 def _common_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "protocol",
-        choices=(
-            "recording",
-            "song_detection",
-            "passive_playback",
-            "combined_playback",
-        ),
-    )
-    parser.add_argument(
-        "--profile",
-        choices=("standard", "debug"),
-        help="standard/debug profile for detection protocols (default: standard)",
+        "--config",
+        type=Path,
+        required=True,
+        help="path to a complete protocol TOML",
     )
     parser.add_argument("--rig", type=Path, required=True, help="path to rig TOML")
 
@@ -215,6 +202,8 @@ def _bonsai_command(
                 "SongTriggerProbability": run.song_trigger_probability,
                 "TriggerLockoutBlocks": run.trigger_lockout_blocks,
                 "SchedulerRandomSeed": random_seed,
+                "EnableSongTriggered": str(run.enable_song_triggered).lower(),
+                "EnablePassive": str(run.enable_passive).lower(),
                 "ArduinoPort": run.serial_port,
                 "ArduinoBaudRate": run.serial_baud_rate,
             }

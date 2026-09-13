@@ -15,6 +15,8 @@ class ConfigError(ValueError):
 @dataclass(frozen=True)
 class ProtocolRun:
     protocol_name: str
+    protocol_config: Path
+    repo_root: Path
     workflow: Path
     bonsai_executable: Path
     audio_device: str
@@ -31,8 +33,10 @@ class ProtocolRun:
         return {
             "protocol": {
                 "name": self.protocol_name,
+                "config": str(self.protocol_config),
                 "workflow": str(self.workflow),
             },
+            "steg_song": {"repo_root": str(self.repo_root)},
             "bonsai": {"executable": str(self.bonsai_executable)},
             "audio_input": {
                 "device_name": self.audio_device,
@@ -110,6 +114,8 @@ class SongDetectionRun(ProtocolRun):
 @dataclass(frozen=True)
 class PassivePlaybackRun:
     protocol_name: str
+    protocol_config: Path
+    repo_root: Path
     workflow: Path
     bonsai_executable: Path
     session_root: Path
@@ -121,8 +127,10 @@ class PassivePlaybackRun:
         return {
             "protocol": {
                 "name": self.protocol_name,
+                "config": str(self.protocol_config),
                 "workflow": str(self.workflow),
             },
+            "steg_song": {"repo_root": str(self.repo_root)},
             "bonsai": {"executable": str(self.bonsai_executable)},
             "arduino_trigger": {
                 "port": self.serial_port,
@@ -137,6 +145,8 @@ class PassivePlaybackRun:
 class CombinedPlaybackRun(SongDetectionRun):
     serial_port: str
     serial_baud_rate: int
+    enable_song_triggered: bool
+    enable_passive: bool
     passive_interval_seconds: int
     song_trigger_delay_ms: int
     song_trigger_probability: float
@@ -152,6 +162,8 @@ class CombinedPlaybackRun(SongDetectionRun):
             "baud_rate": self.serial_baud_rate,
         }
         result["playback"] = {
+            "enable_song_triggered": self.enable_song_triggered,
+            "enable_passive": self.enable_passive,
             "passive_interval_seconds": self.passive_interval_seconds,
             "passive_interval_blocks": self.passive_interval_blocks,
             "song_trigger_delay_ms": self.song_trigger_delay_ms,
@@ -164,37 +176,30 @@ class CombinedPlaybackRun(SongDetectionRun):
 
 
 def load_run(
-    repo_root: Path,
     rig_path: Path,
-    protocol_name: str,
-    profile_name: str | None = None,
+    protocol_path: Path,
 ) -> ProtocolRun | PassivePlaybackRun:
+    protocol = _read_toml(protocol_path)
+    protocol_name = _required(protocol, "protocol", "name", str)
     if protocol_name == "recording":
-        if profile_name is not None:
-            raise ConfigError("recording does not use a profile")
-        return load_recording_run(repo_root, rig_path, protocol_name)
+        return load_recording_run(rig_path, protocol_path)
     if protocol_name == "song_detection":
-        return load_song_detection_run(
-            repo_root, rig_path, profile_name or "standard"
-        )
+        return load_song_detection_run(rig_path, protocol_path)
     if protocol_name == "passive_playback":
-        if profile_name is not None:
-            raise ConfigError("passive_playback does not use a profile")
-        return load_passive_playback_run(repo_root, rig_path)
-    if protocol_name == "combined_playback":
-        return load_combined_playback_run(
-            repo_root, rig_path, profile_name or "standard"
-        )
+        return load_passive_playback_run(rig_path, protocol_path)
+    if protocol_name in {"combined_playback", "song_triggered_playback"}:
+        return load_combined_playback_run(rig_path, protocol_path)
     raise ConfigError(f"Unknown protocol: {protocol_name!r}")
 
 
 def load_passive_playback_run(
-    repo_root: Path, rig_path: Path
+    rig_path: Path, protocol_path: Path
 ) -> PassivePlaybackRun:
-    protocol = _read_protocol(repo_root, "passive_playback")
+    protocol = _read_toml(protocol_path)
+    _expect_protocol(protocol, "passive_playback")
     rig = _read_toml(rig_path)
     base = _load_base_settings(
-        repo_root, rig, "passive_playback", protocol
+        protocol_path, rig, protocol
     )
     serial_port = _required(rig, "arduino_trigger", "port", str).strip()
     if not serial_port:
@@ -212,10 +217,11 @@ def load_passive_playback_run(
 
 
 def load_recording_run(
-    repo_root: Path, rig_path: Path, protocol_name: str
+    rig_path: Path, protocol_path: Path
 ) -> RecordingRun:
-    protocol = _read_protocol(repo_root, protocol_name)
-    base = _load_common_settings(repo_root, rig_path, protocol_name, protocol)
+    protocol = _read_toml(protocol_path)
+    _expect_protocol(protocol, "recording")
+    base = _load_common_settings(rig_path, protocol_path, protocol)
     split_minutes, blocks_per_wav = _recording_settings(protocol, base.buffer_ms)
     return RecordingRun(
         **base.__dict__,
@@ -225,19 +231,21 @@ def load_recording_run(
 
 
 def load_song_detection_run(
-    repo_root: Path, rig_path: Path, profile_name: str
+    rig_path: Path, protocol_path: Path
 ) -> SongDetectionRun:
     settings, _ = _load_song_detection_settings(
-        repo_root, rig_path, "song_detection", profile_name
+        rig_path, protocol_path, {"song_detection"}
     )
     return SongDetectionRun(**settings)
 
 
 def load_combined_playback_run(
-    repo_root: Path, rig_path: Path, profile_name: str
+    rig_path: Path, protocol_path: Path
 ) -> CombinedPlaybackRun:
     settings, protocol = _load_song_detection_settings(
-        repo_root, rig_path, "combined_playback", profile_name
+        rig_path,
+        protocol_path,
+        {"combined_playback", "song_triggered_playback"},
     )
     rig = _read_toml(rig_path)
     serial_port = _required(rig, "arduino_trigger", "port", str).strip()
@@ -254,12 +262,20 @@ def load_combined_playback_run(
     trigger_lockout_seconds = _positive_int(
         protocol, "playback", "trigger_lockout_seconds"
     )
+    enable_song_triggered = _required(
+        protocol, "playback", "enable_song_triggered", bool
+    )
+    enable_passive = _required(protocol, "playback", "enable_passive", bool)
+    if not enable_song_triggered and not enable_passive:
+        raise ConfigError("playback must enable song-triggered or passive playback")
     return CombinedPlaybackRun(
         **settings,
         serial_port=serial_port,
         serial_baud_rate=_positive_int(
             rig, "arduino_trigger", "baud_rate"
         ),
+        enable_song_triggered=enable_song_triggered,
+        enable_passive=enable_passive,
         passive_interval_seconds=passive_interval_seconds,
         song_trigger_delay_ms=song_trigger_delay_ms,
         song_trigger_probability=_probability(
@@ -285,24 +301,21 @@ def load_combined_playback_run(
 
 
 def _load_song_detection_settings(
-    repo_root: Path,
     rig_path: Path,
-    protocol_name: str,
-    profile_name: str,
+    protocol_path: Path,
+    expected_names: set[str],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    if profile_name not in {"debug", "standard"}:
-        raise ConfigError(f"Unknown {protocol_name} profile: {profile_name!r}")
-    protocol = _read_toml(
-        repo_root / "protocols" / f"{protocol_name}.{profile_name}.toml"
-    )
-    declared_profile = _required(protocol, "protocol", "profile", str)
-    if declared_profile != profile_name:
+    protocol = _read_toml(protocol_path)
+    protocol_name = _required(protocol, "protocol", "name", str)
+    if protocol_name not in expected_names:
+        expected = " or ".join(sorted(expected_names))
         raise ConfigError(
-            f"Profile file {profile_name!r} declares {declared_profile!r}"
+            f"Expected protocol {expected!r}, found {protocol_name!r}"
         )
-    base = _load_common_settings(
-        repo_root, rig_path, protocol_name, protocol
-    )
+    profile_name = _required(protocol, "protocol", "profile", str).strip()
+    if not profile_name:
+        raise ConfigError("protocol.profile cannot be empty")
+    base = _load_common_settings(rig_path, protocol_path, protocol)
     if base.sample_format != "Mono16":
         raise ConfigError("song detection requires audio_input.sample_format = \"Mono16\"")
 
@@ -366,18 +379,13 @@ def validate_session_id(value: str) -> str:
     return value
 
 
-def _read_protocol(repo_root: Path, protocol_name: str) -> dict[str, Any]:
-    return _read_toml(repo_root / "protocols" / f"{protocol_name}.toml")
-
-
 def _load_common_settings(
-    repo_root: Path,
     rig_path: Path,
-    protocol_name: str,
+    protocol_path: Path,
     protocol: dict[str, Any],
 ) -> ProtocolRun:
     rig = _read_toml(rig_path)
-    base = _load_base_settings(repo_root, rig, protocol_name, protocol)
+    base = _load_base_settings(protocol_path, rig, protocol)
     sample_rate = _positive_int(rig, "audio_input", "sample_rate_hz")
     sample_format = _required(rig, "audio_input", "sample_format", str)
     audiomoth_gain = _required(rig, "audio_input", "gain", str)
@@ -416,30 +424,44 @@ def _load_common_settings(
 
 
 def _load_base_settings(
-    repo_root: Path,
+    protocol_path: Path,
     rig: dict[str, Any],
-    protocol_name: str,
     protocol: dict[str, Any],
 ) -> dict[str, Any]:
-    name = _required(protocol, "protocol", "name", str)
-    if name != protocol_name:
-        raise ConfigError(
-            f"Protocol file {protocol_name!r} declares the name {name!r}"
-        )
-
-    workflow = repo_root / _required(protocol, "protocol", "workflow", str)
+    name = _required(protocol, "protocol", "name", str).strip()
+    if not name:
+        raise ConfigError("protocol.name cannot be empty")
+    repo_root = Path(_required(rig, "steg_song", "repo_root", str)).expanduser()
+    if not repo_root.is_absolute():
+        raise ConfigError("steg_song.repo_root must be an absolute path")
+    workflow_relative = Path(
+        _required(protocol, "protocol", "workflow", str)
+    )
+    if workflow_relative.is_absolute():
+        raise ConfigError("protocol.workflow must be relative to steg_song.repo_root")
+    workflow = repo_root / workflow_relative
     bonsai = Path(_required(rig, "bonsai", "executable", str)).expanduser()
     session_root = Path(_required(rig, "storage", "session_root", str)).expanduser()
+    if not repo_root.is_dir():
+        raise ConfigError(f"Repository root does not exist: {repo_root}")
     if not workflow.is_file():
         raise ConfigError(f"Workflow does not exist: {workflow}")
     if not bonsai.is_file():
         raise ConfigError(f"Bonsai executable does not exist: {bonsai}")
     return {
         "protocol_name": name,
+        "protocol_config": protocol_path.resolve(),
+        "repo_root": repo_root.resolve(),
         "workflow": workflow.resolve(),
         "bonsai_executable": bonsai.resolve(),
         "session_root": session_root.resolve(),
     }
+
+
+def _expect_protocol(protocol: dict[str, Any], expected: str) -> None:
+    actual = _required(protocol, "protocol", "name", str)
+    if actual != expected:
+        raise ConfigError(f"Expected protocol {expected!r}, found {actual!r}")
 
 
 def _recording_settings(
